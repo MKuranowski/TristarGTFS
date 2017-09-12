@@ -4,9 +4,8 @@ import time
 import zlib
 import zipfile
 import argparse
-import urllib.request as request
+import requests
 from datetime import date, datetime
-from codecs import decode
 from time import sleep
 
 
@@ -23,7 +22,7 @@ def _gettime(string):
 
 def _checkday(day):
     "Check if schedules are avilable for given date"
-    timespans = json.loads(decode(request.urlopen("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8a546186-396f-4a95-a369-9e3a8f3a4b45/download/stoptimesspan.json").read()))
+    timespans = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8a546186-396f-4a95-a369-9e3a8f3a4b45/download/stoptimesspan.json").text)
     timespans = timespans["stopTimesSpan"]
     for agency in timespans:
         start = datetime.strptime(agency["startDate"], "%Y-%m-%d").date()
@@ -37,7 +36,7 @@ def _checkday(day):
 
 def stops(day):
     "Parse stops for given day to output/stops.txt GTFS file"
-    stops = json.loads(decode(request.urlopen("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/cd4c08b5-460e-40db-b920-ab9fc93c1a92/download/stops.json").read()))
+    stops = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/cd4c08b5-460e-40db-b920-ab9fc93c1a92/download/stops.json").text)
     stops = stops[day.strftime("%Y-%m-%d")]["stops"]
     file = open("output/stops.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("stop_id,stop_name,stop_lat,stop_lon\n")
@@ -57,7 +56,7 @@ def agencies(normalize):
         file.write("99,ZTM Gdańsk,http://ztm.gda.pl,Europe/Warsaw,pl\n")
         file.write("98,ZKM Gdynia,http://zkmgdynia.pl,Europe/Warsaw,pl\n")
     else:
-        agencies = json.loads(decode(request.urlopen("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8b3aa347-3bb7-4c58-9113-d47458ec1fc3/download/agency.json").read()))
+        agencies = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8b3aa347-3bb7-4c58-9113-d47458ec1fc3/download/agency.json").text)
         agencies = agencies["agency"]
         for agency in agencies:
             agency_id = str(agency["agencyId"])
@@ -72,7 +71,7 @@ def routes(day, normalize):
     "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
     file = open("output/routes.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("agency_id,route_id,route_short_name,route_long_name,route_type,route_color,route_text_color\n")
-    routes = json.loads(decode(request.urlopen("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").read()))
+    routes = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").text)
     routes = routes[day.strftime("%Y-%m-%d")]["routes"]
     routeslist = []
     for route in routes:
@@ -117,14 +116,19 @@ def times(day, routes):
     day = day.strftime("%Y-%m-%d")
     for route in routes:
         triplist = []
-        sleep(0.5)
-        #Space out calls to schedules server. This reduces risk of getting a TimeOut error
-        #print("DEBUG: Requesting day %s, route %s" % (day, route))
-        times = json.loads(decode(request.urlopen("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route), timeout=90).read()))
+        times = None
+        while (not times):
+            try:
+                times = requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route))
+                break
+            except requests.Timeout:
+                print("Timeout during requesting day %s, route %s - trying again" % (day, route))
+                pass
+        times = json.loads(times.text)
         times = times["stopTimes"]
         for time in times:
             route_id = str(time["routeId"])
-            trip_id = "-".join([route_id, time["busServiceName"], str(time["order"])])
+            trip_id = "R%sT%sS%sO%s" % (route_id, time["tripId"], time["busServiceName"], str(time["order"]))
             stop_id = str(time["stopId"])
             stop_sequence = str(time["stopSequence"])
             arrival_time = _gettime(time["arrivalTime"])
