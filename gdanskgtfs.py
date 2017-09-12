@@ -68,8 +68,8 @@ def agencies(normalize):
             file.write(",".join([agency_id, agency_name, agency_url, agency_timezone, agency_lang + "\n"]))
     file.close()
 
-def routes(day, normalize, extend):
-    "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTm or ZKM."
+def routes(day, normalize):
+    "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
     file = open("output/routes.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("agency_id,route_id,route_short_name,route_long_name,route_type,route_color,route_text_color\n")
     routes = json.loads(decode(request.urlopen("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").read()))
@@ -117,7 +117,7 @@ def times(day, routes):
     day = day.strftime("%Y-%m-%d")
     for route in routes:
         triplist = []
-        sleep(0.1)
+        sleep(0.5)
         #Space out calls to schedules server. This reduces risk of getting a TimeOut error
         #print("DEBUG: Requesting day %s, route %s" % (day, route))
         times = json.loads(decode(request.urlopen("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route), timeout=90).read()))
@@ -172,7 +172,7 @@ def zip():
 
 # Main Funcionlity
 
-def gdanskgtfs(day=date.today(), normalize=False, extend=False):
+def gdanskgtfs(day=date.today(), normalize=False):
     if _checkday(day):
         print("Cleaning up output/ dir")
         cleanup()
@@ -184,7 +184,7 @@ def gdanskgtfs(day=date.today(), normalize=False, extend=False):
         stops(day)
 
         print("Parsing routes")
-        rlist = routes(day, normalize, extend)
+        rlist = routes(day, normalize)
 
         print("Parsing stop_times")
         times(day, rlist)
@@ -202,7 +202,6 @@ if __name__ == "__main__":
     st = time.time()
     argprs = argparse.ArgumentParser()
     argprs.add_argument("-n", "--normalize", action="store_true", required=False, dest="normalize", help="normalize agencies to ZTM Gdańsk and ZKM Gdynia")
-    argprs.add_argument("-e", "--extend", action="store_true", required=False, dest="extend", help="use google's extended route types")
     argprs.add_argument("-d", "--day", default="", required=False, metavar="YYYY-MM-DD", dest="day", help="date for which schedules should be downloaded, if not today")
     args = vars(argprs.parse_args())
     if args["day"]: day = datetime.strptime(args["day"], "%Y-%m-%d").date()
@@ -213,5 +212,5 @@ if __name__ == "__main__":
  \_| (_| (_| | | _> |< \_|  | |  __)
     """)
     print("Downloading schedules for %s" % day.strftime("%Y-%m-%d"))
-    gdanskgtfs(day, args["normalize"], args["extend"])
+    gdanskgtfs(day, args["normalize"])
     print("=== Done! In %s sec. ===" % round(time.time() - st, 3))
