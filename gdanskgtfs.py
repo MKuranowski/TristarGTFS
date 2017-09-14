@@ -2,11 +2,11 @@ import os
 import json
 import time
 import zlib
+import sqlite3
 import zipfile
 import argparse
 import requests
-from datetime import date, datetime
-from time import sleep
+from datetime import date, datetime, timedelta
 
 
 # Internal functions, to ease up parsing data
@@ -32,21 +32,15 @@ def _checkday(day):
             return(False)
     return(True)
 
-# Parsing Scripts
+def _getrange(startdate):
+    enum = 0
+    while True:
+        day = startdate + timedelta(days=enum)
+        if not _checkday(day): break
+        enum += 1
+    return(range(enum))
 
-def stops(day):
-    "Parse stops for given day to output/stops.txt GTFS file"
-    stops = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/cd4c08b5-460e-40db-b920-ab9fc93c1a92/download/stops.json").text)
-    stops = stops[day.strftime("%Y-%m-%d")]["stops"]
-    file = open("output/stops.txt", "w", encoding="utf-8", newline="\r\n")
-    file.write("stop_id,stop_name,stop_lat,stop_lon\n")
-    for stop in stops:
-        stop_id = str(stop["stopId"])
-        stop_name = "\"" + stop["stopDesc"].rstrip().replace("\"", "\"\"").replace("'", "\"\"") + "\""
-        stop_lat = str(stop["stopLat"])
-        stop_lon = str(stop["stopLon"])
-        file.write(",".join([stop_id, stop_name, stop_lat, stop_lon + "\n"]))
-    file.close()
+# Parsing Scripts
 
 def agencies(normalize):
     "Parse agencies to output/agency.txt GTFS file. If normalize is True only two will be created: ZTM Gdańsk and ZKM Gdynia."
@@ -67,97 +61,202 @@ def agencies(normalize):
             file.write(",".join([agency_id, agency_name, agency_url, agency_timezone, agency_lang + "\n"]))
     file.close()
 
-def routes(day, normalize):
+def stops(startday, daysrange):
+    "Parse stops for given day to output/stops.txt GTFS file"
+    # Some variables
+    allstops = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/cd4c08b5-460e-40db-b920-ab9fc93c1a92/download/stops.json").text)
+    stopstable = {}
+
+    # Database to merge stops over different days
+    databaseconnection = sqlite3.connect(":memory:")
+    databaseconnection.row_factory = sqlite3.Row
+    database = databaseconnection.cursor()
+    database.execute("CREATE TABLE stops (id text, orig_id text, name text, lat text, lon text)")
+    databaseconnection.commit()
+
+    # Read stops to database
+    for timediff in daysrange:
+        day = startday + timedelta(days=timediff)
+        stops = allstops[day.strftime("%Y-%m-%d")]["stops"]
+        for stop in stops:
+            # Read data
+            original_stop_id = str(stop["stopId"])
+            stop_name = stop["stopDesc"].rstrip()
+            stop_lat = str(stop["stopLat"])
+            stop_lon = str(stop["stopLon"])
+
+            # Check against database
+            database.execute("SELECT * FROM stops WHERE name=? AND lat=? AND lon=?", (stop_name, stop_lat, stop_lon))
+            response = database.fetchone()
+            if response:
+                stop_id = response["id"]
+            else:
+                response = database.execute("SELECT * FROM stops WHERE orig_id=?", (original_stop_id,))
+                if response: used_ids = [response[x]["id"] for x in sorted(response)]
+                else: used_ids = []
+                stop_suffix = 0
+                while True:
+                    stop_id = "-".join([original_stop_id, str(stop_suffix)])
+                    stop_suffix += 1
+                    if stop_id not in used_ids: break
+                database.execute("INSERT INTO stops VALUES (?,?,?,?,?)", (stop_id, original_stop_id, stop_name, stop_lat, stop_lon))
+            databaseconnection.commit()
+            stopstable["-".join([day.strftime("%Y-%m-%d"), original_stop_id])] = stop_id
+
+    # Export created database
+    file = open("output/stops.txt", "w", encoding="utf-8", newline="\r\n")
+    file.write("stop_id,stop_name,stop_lat,stop_lon\n")
+    database.execute("SELECT * FROM stops")
+    for stop in database.fetchall():
+        stop_name = "\"" + stop["name"].replace("\"", "\"\"").replace("\'", "\"\"") + "\""
+        file.write(",".join([stop["id"], stop_name, stop["lat"], stop["lon"] + "\n"]))
+    file.close()
+    databaseconnection.commit()
+    return(stopstable)
+
+def routes(startday, daysrange, normalize):
     "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
+    # Some variables
+    allroutes = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").text)
+    routeslist = {}
+    routestable = {}
+
+    # Database to merge same routes over different days
+    databaseconnection = sqlite3.connect(":memory:")
+    databaseconnection.row_factory = sqlite3.Row
+    database = databaseconnection.cursor()
+    database.execute("CREATE TABLE routes (id text, orig_id text, agency text, short_name text, long_name text, type text, color text)")
+    databaseconnection.commit()
+
+    # Read routes to database
+    for timediff in daysrange:
+        day = startday + timedelta(days=timediff)
+        routeslist[day.strftime("%Y-%m-%d")] = []
+        routes = allroutes[day.strftime("%Y-%m-%d")]["routes"]
+        for route in routes:
+            # Read data
+            agency_id = str(route["agencyId"])
+            original_route_id = str(route["routeId"])
+            route_short_name = route["routeShortName"]
+            route_long_name = route["routeLongName"] if route["routeShortName"] != route["routeLongName"] else ""
+            if agency_id == "2":
+                #Gdańsk Trams
+                route_type = "0"
+                route_color = "BB0000,FFFFFF"
+            elif agency_id == "5":
+                #Gdynia Trolleybuses
+                route_type = "800"
+                route_color = "11CC11,000000"
+            elif route_short_name.startswith("N"):
+                #Night Buses
+                route_type = "3"
+                route_color = "000000,FFFFFF"
+            elif not route_short_name.isnumeric():
+                #Express Busses
+                route_type = "3"
+                route_color = "FFCC22,000000"
+            else:
+                #Normal Busses
+                route_type = "3"
+                route_color = "2222BB,FFFFFF"
+            if normalize:
+                if int(agency_id) < 5: agency_id = "99"
+                else: agency_id = "98"
+
+            # Check against database
+            database.execute("SELECT * FROM routes WHERE agency=? AND short_name=? AND long_name=?", (agency_id, route_short_name, route_long_name))
+            response = database.fetchone()
+            if response:
+                route_id = response["id"]
+            else:
+                response = database.execute("SELECT * FROM routes WHERE orig_id=?", (original_route_id,))
+                if response: used_ids = [response[x]["id"] for x in sorted(response)]
+                else: used_ids = []
+                route_suffix = 0
+                while True:
+                    route_id = "-".join([original_route_id, str(route_suffix)])
+                    route_suffix += 1
+                    if route_id not in used_ids: break
+                database.execute("INSERT INTO routes VALUES (?,?,?,?,?,?,?)", (route_id, original_route_id, agency_id, route_short_name, route_long_name, route_type, route_color))
+            databaseconnection.commit()
+            routeslist[day.strftime("%Y-%m-%d")].append(original_route_id)
+            routestable["-".join([day.strftime("%Y-%m-%d"), original_route_id])] = route_id
+
+    # Export created databse
     file = open("output/routes.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("agency_id,route_id,route_short_name,route_long_name,route_type,route_color,route_text_color\n")
-    routes = json.loads(requests.get("http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").text)
-    routes = routes[day.strftime("%Y-%m-%d")]["routes"]
-    routeslist = []
-    for route in routes:
-        agency_id = str(route["agencyId"])
-        route_id = str(route["routeId"])
-        route_short_name = route["routeShortName"]
-        route_long_name = route["routeLongName"] if route["routeShortName"] != route["routeLongName"] else ""
-        if agency_id == "2":
-            #Gdańsk Trams
-            route_type = "0"
-            route_color = "BB0000,FFFFFF"
-        elif agency_id == "5":
-            #Gdynia Trolleybuses
-            route_type = "800"
-            route_color = "11CC11,000000"
-        elif route_short_name.startswith("N"):
-            #Night Buses
-            route_type = "3"
-            route_color = "000000,FFFFFF"
-        elif not route_short_name.isnumeric():
-            #Express Busses
-            route_type = "3"
-            route_color = "FFCC22,000000"
-        else:
-            #Normal Busses
-            route_type = "3"
-            route_color = "2222BB,FFFFFF"
-        if normalize:
-            if int(agency_id) < 5: agency_id = "99"
-            else: agency_id = "98"
-        file.write(",".join([agency_id, route_id, route_short_name, route_long_name, route_type, route_color + "\n"]))
-        routeslist.append(route_id)
+    database.execute("SELECT * FROM routes")
+    for route in database.fetchall():
+        file.write(",".join([route["agency"], route["id"], route["short_name"], route["long_name"], route["type"], route["color"] + "\n"]))
     file.close()
-    return(routeslist)
+    databaseconnection.commit()
+    return(routeslist, routestable)
 
-def times(day, routes):
+def times(startday, daysrange, routeslist, routestable, stopstable):
     "Parse stop_times for given day to output/stop_times.txt and output/trips.txt GTFS file"
     fileTimes = open("output/stop_times.txt", "w", encoding="utf-8", newline="\r\n")
     fileTimes.write("trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type\n")
     fileTrips = open("output/trips.txt", "w", encoding="utf-8", newline="\r\n")
-    fileTrips.write("service_id,route_id,trip_id\n")
-    day = day.strftime("%Y-%m-%d")
-    for route in routes:
-        triplist = []
-        times = None
-        while (not times):
-            try:
-                times = requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route))
-                break
-            except requests.Timeout:
-                print("Timeout during requesting day %s, route %s - trying again" % (day, route))
-                pass
-        times = json.loads(times.text)
-        times = times["stopTimes"]
-        for time in times:
-            route_id = str(time["routeId"])
-            trip_id = "R%sT%sS%sO%s" % (route_id, time["tripId"], time["busServiceName"], str(time["order"]))
-            stop_id = str(time["stopId"])
-            stop_sequence = str(time["stopSequence"])
-            arrival_time = _gettime(time["arrivalTime"])
-            departure_time = _gettime(time["departureTime"])
-            if time["virtual"] == 1 or time["nonpassenger"] == 1:
-                pd_type = "1,1"
-            else:
-                pd_type = "0,0"
-            fileTimes.write(",".join([trip_id, arrival_time, departure_time, stop_id, stop_sequence, pd_type + "\n"]))
-            if trip_id not in triplist:
-                triplist.append(trip_id)
-                fileTrips.write(",".join([day, route_id, trip_id + "\n"]))
+    fileTrips.write("service_id,route_id,trip_id,wheelchair_accessible\n")
+    for timediff in daysrange:
+        day = (startday + timedelta(days=timediff)).strftime("%Y-%m-%d")
+        for route in routeslist[day]:
+            print("Parsing stop_times: Day %s, route %s" % (day, route), end="\r")
+            triplist = []
+            times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
+            times = times["stopTimes"]
+            for time in times:
+                route_id = routestable["-".join([day, str(time["routeId"])])]
+                trip_id = "R%sD%sT%sS%sO%s" % (route_id, day, time["tripId"], time["busServiceName"], str(time["order"]))
+                stop_id = stopstable["-".join([day, str(time["stopId"])])]
+                stop_sequence = str(time["stopSequence"])
+                arrival_time = _gettime(time["arrivalTime"])
+                departure_time = _gettime(time["departureTime"])
+                if time["virtual"] == 1 or time["nonpassenger"] == 1:
+                    pd_type = "1,1"
+                elif time["onDemand"] == 1:
+                    pd_type = "3,3"
+                else:
+                    pd_type = "0,0"
+                if time["wheelchairAccessible"] == 1:
+                    low_floor = "1"
+                elif time["wheelchairAccessible"] == 0:
+                    low_floor = "2"
+                else:
+                    low_floor = "0"
+                fileTimes.write(",".join([trip_id, arrival_time, departure_time, stop_id, stop_sequence, pd_type + "\n"]))
+                if trip_id not in triplist:
+                    triplist.append(trip_id)
+                    fileTrips.write(",".join([day, route_id, trip_id, low_floor + "\n"]))
+    print("Parsing stop_times")
     fileTrips.close()
     fileTimes.close()
 
-def calendar(day):
-    "Create calendar_dates file for provided day"
-    day = day.strftime("%Y-%m-%d")
+
+def calendar(startday, daysrange, extenddates):
+    "Create calendar_dates file for provided days"
     file = open("output/calendar_dates.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("date,service_id,exception_type\n")
-    file.write("%s,%s,1\n" % (day.replace("-", ""), day))
+    services = {}
+    for timediff in daysrange:
+        day = (startday + timedelta(days=timediff))
+        daystr = day.strftime("%Y-%m-%d")
+        services[day.weekday()] = day
+        file.write("%s,%s,1\n" % (daystr.replace("-", ""), daystr))
+    if extenddates:
+        for timediff in range(max(daysrange)+1, 31):
+            day = (startday + timedelta(days=timediff))
+            service = services[day.weekday()].strftime("%Y-%m-%d")
+            file.write("%s,%s,1\n" % (day.strftime("%Y%m%d"), service))
     file.close()
 
-def feedinfo(day):
+def feedinfo(startday, daysrange, extenddates):
     "Create feed_info in output/feed_info.txt to fulfil licencing needs"
-    day = day.strftime("%Y-%m-%d")
+    endday = (startday + timedelta(days=max(daysrange))).strftime("%Y%m%d") if not extenddates else (startday + timedelta(days=30)).strftime("%Y%m%d")
+    startday = startday.strftime("%Y%m%d")
     file = open("output/feed_info.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\n")
-    file.write("Zarząd Transportu Miejskiego w Gdańsku,http://91.244.248.19/organization/ztm-gdansk,pl,%s,%s,%s\n" % (day.replace("-", ""), day.replace("-", ""), date.today().strftime("%Y-%m-%d")))
+    file.write("Zarząd Transportu Miejskiego w Gdańsku,http://91.244.248.19/organization/ztm-gdansk,pl,%s,%s,%s\n" % (startday, endday, date.today().strftime("%Y-%m-%d")))
     file.close()
 
 # Utility Scripts
@@ -166,6 +265,12 @@ def cleanup():
     "Cleans output/ directory before parsing."
     if not os.path.exists("output"): os.mkdir("output")
     for file in [os.path.join("output", x) for x in os.listdir("output")]: os.remove(file)
+
+def tables(routestable, stopstable):
+    "Exports routes and stops tables in order to match static with RT data to tables.json"
+    file = open("tables.json", "w", encoding="utf-8", newline="\r\n")
+    file.write(json.dumps({"routes": routestable, "stops": stopstable}, sort_keys=True, indent=4))
+    file.close()
 
 def zip():
     "Zips the content of output/*.txt to gtfs.zip"
@@ -176,37 +281,47 @@ def zip():
 
 # Main Funcionlity
 
-def gdanskgtfs(day=date.today(), normalize=False):
-    if _checkday(day):
+def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False):
+    daysrange = _getrange(day)
+    if daysrange:
+        print("Downloading schedules for %s to %s" % (day.strftime("%Y-%m-%d"), (day + timedelta(max(daysrange))).strftime("%Y-%m-%d")))
         print("Cleaning up output/ dir")
         cleanup()
 
         print("Parsing agencies")
         agencies(normalize)
 
+        print("Creating calendar and feed_info")
+        calendar(day, daysrange, extenddates)
+        feedinfo(day, daysrange, extenddates)
+
         print("Parsing stops")
-        stops(day)
+        stable  = stops(day, daysrange)
 
         print("Parsing routes")
-        rlist = routes(day, normalize)
+        rlist, rtable = routes(day, daysrange, normalize)
 
-        print("Parsing stop_times")
-        times(day, rlist)
-
-        print("Creating calendar and feed_info")
-        calendar(day)
-        feedinfo(day)
+        print("Parsing stop_times", end="\r")
+        times(day, daysrange, rlist, rtable, stable)
 
         print("Zipping to gtfs.zip")
         zip()
+
+        if tables:
+            print("Exporting routes and stops tables to tables.json")
+            tables(rtable, stable)
+
     else:
         print("Error! Full schedules are not available for date %s!" % day.strftime("%Y-%m-%d"))
 
 if __name__ == "__main__":
     st = time.time()
     argprs = argparse.ArgumentParser()
+    argprs.add_argument("-e", "--extend", action="store_true", required=False, dest="extend", help="export routes and stops tables to tables.json")
+    argprs.add_argument("-t", "--tables", action="store_true", required=False, dest="tables", help="export routes and stops tables to tables.json")
     argprs.add_argument("-n", "--normalize", action="store_true", required=False, dest="normalize", help="normalize agencies to ZTM Gdańsk and ZKM Gdynia")
-    argprs.add_argument("-d", "--day", default="", required=False, metavar="YYYY-MM-DD", dest="day", help="date for which schedules should be downloaded, if not today")
+    argprs.add_argument("-d", "--day", default="", required=False, metavar="YYYY-MM-DD", dest="day", help="the start day for which the feed should start")
+
     args = vars(argprs.parse_args())
     if args["day"]: day = datetime.strptime(args["day"], "%Y-%m-%d").date()
     else: day = date.today()
@@ -215,6 +330,5 @@ if __name__ == "__main__":
  /__  _|  _. ._   _ |  /__  | |_ (_
  \_| (_| (_| | | _> |< \_|  | |  __)
     """)
-    print("Downloading schedules for %s" % day.strftime("%Y-%m-%d"))
-    gdanskgtfs(day, args["normalize"])
+    gdanskgtfs(day, args["normalize"], args["tables"], args["extend"])
     print("=== Done! In %s sec. ===" % round(time.time() - st, 3))
