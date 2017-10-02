@@ -207,8 +207,7 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
     fileTimes.write("trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type\n")
     fileTrips = open("output/trips.txt", "w", encoding="utf-8", newline="\r\n")
     fileTrips.write("service_id,route_id,trip_id,wheelchair_accessible\n")
-    #for timediff in daysrange:
-    for timediff in range(1):
+    for timediff in daysrange:
         day = (startday + timedelta(days=timediff)).strftime("%Y-%m-%d")
         for route in routeslist[day]:
             print("\033[1AParsing stop_times: Day %s, route %s     " % (day, route))
