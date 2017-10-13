@@ -210,7 +210,7 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
     for timediff in daysrange:
         day = (startday + timedelta(days=timediff)).strftime("%Y-%m-%d")
         for route in routeslist[day]:
-            print("\033[1AParsing stop_times: Day %s, route %s     " % (day, route))
+            print("\033[1A\033[KParsing stop_times: Day %s, route %s" % (day, route))
             triplist = []
             times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
             times = times["stopTimes"]
@@ -237,7 +237,7 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
                 if trip_id not in triplist:
                     triplist.append(trip_id)
                     fileTrips.write(",".join([day, route_id, trip_id, low_floor + "\n"]))
-    print("\033[1AParsing stop_times" + " "*25)
+    print("\033[1A\033[KParsing stop_times")
     fileTrips.close()
     fileTimes.close()
 
