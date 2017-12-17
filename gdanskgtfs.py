@@ -293,8 +293,8 @@ def zip():
 # Main Funcionlity
 
 def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False):
-    #daysrange = _getrange(day)
-    daysrange = range(1)
+    daysrange = _getrange(day)
+    #daysrange = range(1)
     if daysrange:
         print("Downloading schedules for %s to %s" % (day.strftime("%Y-%m-%d"), (day + timedelta(max(daysrange))).strftime("%Y-%m-%d")))
         print("Cleaning up output/ dir")
