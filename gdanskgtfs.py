@@ -212,8 +212,11 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
         for route in routeslist[day]:
             print("\033[1A\033[KParsing stop_times: Day %s, route %s" % (day, route))
             triplist = []
-            times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
-            times = times["stopTimes"]
+            try:
+                times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
+                times = times["stopTimes"]
+            except (json.decoder.JSONDecodeError, KeyError):
+                continue
             for time in times:
                 route_id = routestable["-".join([day, str(time["routeId"])])]
                 trip_id = "R%sD%sT%sS%sO%s" % (route_id, day, time["tripId"], time["busServiceName"], str(time["order"]))
@@ -291,6 +294,7 @@ def zip():
 
 def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False):
     daysrange = _getrange(day)
+    #daysrange = range(1)
     if daysrange:
         print("Downloading schedules for %s to %s" % (day.strftime("%Y-%m-%d"), (day + timedelta(max(daysrange))).strftime("%Y-%m-%d")))
         print("Cleaning up output/ dir")
