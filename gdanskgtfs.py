@@ -204,9 +204,9 @@ def routes(startday, daysrange, normalize):
 def times(startday, daysrange, routeslist, routestable, stopstable, stopattributes):
     "Parse stop_times for given day to output/stop_times.txt and output/trips.txt GTFS file"
     fileTimes = open("output/stop_times.txt", "w", encoding="utf-8", newline="\r\n")
-    fileTimes.write("trip_id,arrival_time,departure_time,stop_id,stop_sequence,pickup_type,drop_off_type\n")
+    fileTimes.write("trip_id,arrival_time,departure_time,stop_id,original_stop_id,stop_sequence,pickup_type,drop_off_type\n")
     fileTrips = open("output/trips.txt", "w", encoding="utf-8", newline="\r\n")
-    fileTrips.write("service_id,route_id,trip_id,wheelchair_accessible\n")
+    fileTrips.write("service_id,route_id,original_route_id,trip_id,wheelchair_accessible\n")
     for timediff in daysrange:
         day = (startday + timedelta(days=timediff)).strftime("%Y-%m-%d")
         for route in routeslist[day]:
@@ -219,7 +219,7 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
                 continue
             for time in times:
                 route_id = routestable["-".join([day, str(time["routeId"])])]
-                trip_id = "R%sD%sT%sS%sO%s" % (route_id, day, time["tripId"], time["busServiceName"], str(time["order"]))
+                trip_id = "R%sD%sT%sS%sO%s" % (str(time["routeId"]), day, time["tripId"], time["busServiceName"], str(time["order"]))
                 stop_id = stopstable["-".join([day, str(time["stopId"])])]
                 stop_sequence = str(time["stopSequence"])
                 arrival_time = _gettime(time["arrivalTime"])
@@ -236,10 +236,10 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
                     low_floor = "2"
                 else:
                     low_floor = "0"
-                fileTimes.write(",".join([trip_id, arrival_time, departure_time, stop_id, stop_sequence, pd_type + "\n"]))
+                fileTimes.write(",".join([trip_id, arrival_time, departure_time, stop_id, str(time["stopId"]), stop_sequence, pd_type + "\n"]))
                 if trip_id not in triplist:
                     triplist.append(trip_id)
-                    fileTrips.write(",".join([day, route_id, trip_id, low_floor + "\n"]))
+                    fileTrips.write(",".join([day, route_id, str(time["routeId"]), trip_id, low_floor + "\n"]))
     print("\033[1A\033[KParsing stop_times")
     fileTrips.close()
     fileTimes.close()
@@ -293,8 +293,8 @@ def zip():
 # Main Funcionlity
 
 def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False):
-    daysrange = _getrange(day)
-    #daysrange = range(1)
+    #daysrange = _getrange(day)
+    daysrange = range(1)
     if daysrange:
         print("Downloading schedules for %s to %s" % (day.strftime("%Y-%m-%d"), (day + timedelta(max(daysrange))).strftime("%Y-%m-%d")))
         print("Cleaning up output/ dir")
@@ -319,7 +319,7 @@ def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddate
         print("Zipping to gtfs.zip")
         zip()
 
-        if tables:
+        if exporttables:
             print("Exporting routes and stops tables to tables.json")
             tables(rtable, stable)
 

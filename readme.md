@@ -13,11 +13,15 @@ Data comes from [Open Gdańsk CKAN project](http://91.244.248.19/dataset/tristar
 
 ### Ids
 Because stops and routes are publish seperately for each date, the stop_id and route_id in created GTFS are different from those used by ZTM.
-To help you with using RT data, if you use the `--tables` option, a file tables.json will be created, with mapping of ids used by gdańsk to ids in the GTFS.
+To help you with using RT data, if you use the `--tables` option, a file tables.json will be created, with mapping of ids used by Gdańsk to ids in the GTFS.
 The key of each table is created using scheme `YYYY-MM-DD-[ZTM ID]`, and the value is the GTFS id.
 
+Also, there are two additional columns, you can use them instead of the `--tables` option:
+- File *stop_times.txt*: Column `original_stop_id` - stop_id as referenced by ZTM,
+- File *trips.txt*: Column `original_route_id` - route_id as referenced by ZTM.
 
-Also trip_id in Gdańsk represents a route variant, so the trip_id in GTFS is created using using this scheme: `R[route_id]D[date]T[trip_id]S[busServiceName]O[order]`.
+
+Also trip_id in Gdańsk represents a route variant, so the trip_id in GTFS is created using using this scheme: `R[original_route_id]D[date]T[trip_id]S[busServiceName]O[order]`.
 
 ## Running
 
