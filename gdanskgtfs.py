@@ -98,7 +98,7 @@ def stops(startday, daysrange):
                 else: used_ids = []
                 stop_suffix = 0
                 while True:
-                    stop_id = "-".join([original_stop_id, str(stop_suffix)])
+                    stop_id = "_".join([original_stop_id, str(stop_suffix)])
                     stop_suffix += 1
                     if stop_id not in used_ids: break
                 database.execute("INSERT INTO stops VALUES (?,?,?,?,?)", (stop_id, original_stop_id, stop_name, stop_lat, stop_lon))
@@ -183,7 +183,7 @@ def routes(startday, daysrange, normalize):
                 else: used_ids = []
                 route_suffix = 0
                 while True:
-                    route_id = "-".join([original_route_id, str(route_suffix)])
+                    route_id = "_".join([original_route_id, str(route_suffix)])
                     route_suffix += 1
                     if route_id not in used_ids: break
                 database.execute("INSERT INTO routes VALUES (?,?,?,?,?,?,?)", (route_id, original_route_id, agency_id, route_short_name, route_long_name, route_type, route_color))
