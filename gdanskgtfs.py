@@ -211,35 +211,77 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
         day = (startday + timedelta(days=timediff)).strftime("%Y-%m-%d")
         for route in routeslist[day]:
             print("\033[1A\033[KParsing stop_times: Day %s, route %s" % (day, route))
-            triplist = []
+            trips = {}
             try:
                 times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
                 times = times["stopTimes"]
             except (json.decoder.JSONDecodeError, KeyError):
                 continue
+
+            # Load times
             for time in times:
-                route_id = routestable["-".join([day, str(time["routeId"])])]
                 trip_id = "R%sD%sT%sS%sO%s" % (str(time["routeId"]), day, time["tripId"], time["busServiceName"], str(time["order"]))
-                stop_id = stopstable["-".join([day, str(time["stopId"])])]
-                stop_sequence = str(time["stopSequence"])
+                stop_id = stopstable[day + "-" + str(time["stopId"])]
                 arrival_time = _gettime(time["arrivalTime"])
                 departure_time = _gettime(time["departureTime"])
+
+                if trip_id not in trips.keys():
+                    trips[trip_id] = {"data": {"route": str(time["routeId"]), "low_floor": ""}, "times": []}
+
+                # Pick/Drop type
                 if time["virtual"] == 1 or time["nonpassenger"] == 1 or stopattributes[stop_id]["virtual"]:
-                    pd_type = "1,1"
+                    # Stops not-for-passengers won't be included
+                    continue
                 elif time["onDemand"] == 1 or stopattributes[stop_id]["demand"]:
                     pd_type = "3,3"
                 else:
                     pd_type = "0,0"
-                if time["wheelchairAccessible"] == 1:
-                    low_floor = "1"
-                elif time["wheelchairAccessible"] == 0:
-                    low_floor = "2"
-                else:
-                    low_floor = "0"
-                fileTimes.write(",".join([trip_id, arrival_time, departure_time, stop_id, str(time["stopId"]), stop_sequence, pd_type + "\n"]))
-                if trip_id not in triplist:
-                    triplist.append(trip_id)
-                    fileTrips.write(",".join([day, route_id, str(time["routeId"]), trip_id, low_floor + "\n"]))
+
+                # Wheelchair Accessibility
+                if not trips[trip_id]["data"]["low_floor"]:
+                    if time["wheelchairAccessible"] == 1:
+                        trips[trip_id]["data"]["low_floor"] = "1"
+                    elif time["wheelchairAccessible"] == 0:
+                        trips[trip_id]["data"]["low_floor"] = "2"
+                    else:
+                        trips[trip_id]["data"]["low_floor"] = "0"
+
+                # Append to trips
+                trips[trip_id]["times"].append({ \
+                    "arrival": arrival_time, "departure": departure_time,
+                    "stop": str(time["stopId"]), "stop_seq": time["stopSequence"],
+                    "pd_type": pd_type
+                })
+
+            # Export times
+            for trip_id, trip_info in trips.items():
+
+                # Don't export one-stop and two-stop trips [as ZTM suggests upon email comunication]
+                if len(trip_info["times"]) <= 2:
+                    continue
+
+                # Sort times by stop_sequence
+                trip_info["times"] = sorted(trip_info["times"], key=lambda i: i["stop_seq"])
+
+                # Dump trip data
+                fileTrips.write(",".join([
+                    day, #service_id
+                    routestable[day + "-" + trip_info["data"]["route"]], #route_id
+                    trip_info["data"]["route"], #original_route_id
+                    trip_id,
+                    trip_info["data"]["low_floor"] # wheelchair_accessible
+                ]) + "\n")
+
+                # Dump times data
+                for time in trip_info["times"]:
+                    fileTimes.write(",".join([
+                        trip_id, time["arrival"], time["departure"], stopstable[day + "-" + time["stop"]],
+                        time["stop"], str(time["stop_seq"]), time["pd_type"]
+                    ]) + "\n")
+
+
+
+
     print("\033[1A\033[KParsing stop_times")
     fileTrips.close()
     fileTimes.close()
