@@ -22,7 +22,7 @@ def _gettime(string):
 
 def _checkday(day):
     "Check if schedules are avilable for given date"
-    timespans = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8a546186-396f-4a95-a369-9e3a8f3a4b45/download/stoptimesspan.json").text)
+    timespans = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/9c3d6fed-5394-4ef1-b2c6-c8716999149c/download/stoptimesspan.json").text)
     timespans = timespans["stopTimesSpan"]
     for agency in timespans:
         start = datetime.strptime(agency["startDate"], "%Y-%m-%d").date()
@@ -49,7 +49,7 @@ def agencies(normalize):
         file.write("99,ZTM Gdańsk,http://ztm.gda.pl,Europe/Warsaw,pl\n")
         file.write("98,ZKM Gdynia,http://zkmgdynia.pl,Europe/Warsaw,pl\n")
     else:
-        agencies = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/8b3aa347-3bb7-4c58-9113-d47458ec1fc3/download/agency.json").text)
+        agencies = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/dff5f71f-0134-4ef3-8116-73c1a8e929a5/download/agency.json").text)
         agencies = agencies["agency"]
         for agency in agencies:
             agency_id = str(agency["agencyId"])
@@ -63,7 +63,7 @@ def agencies(normalize):
 def stops(startday, daysrange):
     "Parse stops for given day to output/stops.txt GTFS file"
     # Some variables
-    allstops = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/cd4c08b5-460e-40db-b920-ab9fc93c1a92/download/stops.json").text)
+    allstops = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4c4025f0-01bf-41f7-a39f-d156d201b82b/download/stops.json").text)
     stopstable = {}
     stopattributes = {}
 
@@ -125,7 +125,7 @@ def stops(startday, daysrange):
 def routes(startday, daysrange, normalize):
     "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
     # Some variables
-    allroutes = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4128329f-5adb-4082-b326-6e1aea7caddf/download/routes.json").text)
+    allroutes = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/22313c56-5acf-41c7-a5fd-dc5dc72b3851/download/routes.json").text)
     routeslist = {}
     routestable = {}
 
@@ -309,7 +309,7 @@ def feedinfo(startday, daysrange, extenddates):
     startday = startday.strftime("%Y%m%d")
     file = open("output/feed_info.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\n")
-    file.write("Zarząd Transportu Miejskiego w Gdańsku,http://91.244.248.30/organization/ztm-gdansk,pl,%s,%s,%s\n" % (startday, endday, date.today().strftime("%Y-%m-%d")))
+    file.write("Zarząd Transportu Miejskiego w Gdańsku,\"http://91.244.248.30/dataset/tristar\",pl,%s,%s,%s\n" % (startday, endday, date.today().strftime("%Y-%m-%d")))
     file.close()
 
 # Utility Scripts
