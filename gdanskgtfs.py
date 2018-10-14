@@ -1,13 +1,19 @@
+import io
 import os
+import re
+import csv
 import json
 import time
 import zlib
+import ftplib
 import sqlite3
 import zipfile
 import argparse
 import requests
+import openpyxl
+from bs4 import BeautifulSoup
+from tempfile import NamedTemporaryFile
 from datetime import date, datetime, timedelta
-
 
 # Internal functions, to ease up parsing data
 
@@ -39,6 +45,112 @@ def _getrange(startdate):
         enum += 1
     return(range(enum))
 
+def _gdyniaroutenames():
+    zkm_website = requests.get("http://zkmgdynia.pl/")
+    zkm_website.encoding = "utf-8"
+
+    soup = BeautifulSoup(zkm_website.text, "html.parser")
+    route_names = {}
+
+    for route_div in soup.find_all("div", class_="nr_linii"):
+        try: route = route_div.find("a", class_="nr_lini").text.strip()
+        except AttributeError: continue
+
+        try: name = soup.find("div", id="comment_"+route_div["id"]).text
+        except (KeyError, AttributeError): continue
+
+        name_pattern = list(map(str.strip, re.split(r"([<>-]{2,})", name)))
+
+        for idx, name_part in enumerate(name_pattern):
+            # Arrows
+            if name_part == "<->":
+                name_pattern[idx] = "—"
+
+            elif name_part == "->":
+                name_pattern[idx] = "→"
+
+            elif name_part == "<-":
+                name_pattern[idx] = "←"
+
+            # Names
+            else:
+
+                # Get rid of brackets
+                if "(" in name_part:
+                    name_part = name_part.split("(")[0].strip()
+
+                # Avoid something like "Gdynia: Gdynia Dworzec Gł. PKP"
+                if ":" in name_part:
+                    town_name, stop_name = map(str.strip, name_part.split(":"))
+
+                    if set(town_name.split()).isdisjoint(stop_name.split()):
+                        name_pattern[idx] = town_name + " " + stop_name
+
+                    else:
+                        name_pattern[idx] = stop_name
+
+        route_names[route] = " ".join(name_pattern)
+
+    return route_names
+
+def _gdyniatownnames(ftp_login, ftp_pass):
+    with open("ignore_temp_zkm_stops.xlsx", mode="w+b") as xlsx_file:
+        with ftplib.FTP("ftp.zkmgdynia.pl", user=ftp_login, passwd=ftp_pass) as ftp:
+            stop_files = sorted([i for i in ftp.nlst() if re.match(r"_wykaz_slupkow_\d{4}-\d{2}-\d{2}.xlsx", i)])
+            for idx, file in enumerate(stop_files):
+                if datetime.strptime(file, "_wykaz_slupkow_%Y-%m-%d.xlsx").date() > date.today():
+                    if idx == 0: stop_file = stop_files[0]
+                    else: stop_file = stop_files[idx - 1]
+                    break
+            else:
+                stop_file = stop_files[-1]
+            ftp.retrbinary("RETR "+stop_file, xlsx_file.write)
+
+        xlsx_file.seek(0)
+        stop_sheet = openpyxl.load_workbook("ignore_temp_zkm_stops.xlsx").active
+        stop_town_names = {}
+
+        for row in range(2, stop_sheet.max_row + 1):
+            stop_name = stop_sheet.cell(row=row, column=3).value
+            stop_town = stop_sheet.cell(row=row, column=6).value
+
+            try: stop_id = int(stop_sheet.cell(row=row, column=2).value)
+            except (ValueError, TypeError): stop_id = None
+
+            if stop_town:
+                if stop_name: stop_town_names[stop_name] = stop_town
+                if stop_id: stop_town_names[str(stop_id)] = stop_town
+
+    os.remove("ignore_temp_zkm_stops.xlsx")
+    return stop_town_names
+
+def _shouldaddtownname(stop_name, town_name):
+    stop_name, town_name = map(str.upper, (stop_name, town_name))
+    if town_name == "GDAŃSK": return False
+    elif town_name in stop_name: return False
+    for town_part_name in town_name.split(" "):
+        if town_part_name in stop_name:
+            return False
+    return True
+
+def _stopmergetable():
+    merge_csv = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/f8a5bedb-7925-40c9-8d66-dbbc830939b1/download/przystanki_wspolnegda_gdy.csv")
+    merge_csv.encoding = "utf-8"
+
+    table_buffer = io.StringIO(merge_csv.text)
+    reader = csv.DictReader(table_buffer)
+
+    merge_table = {}
+
+    for row in reader:
+        if row["main_organization_id"] == "1":
+            merge_table[row["mapped_gmv_short_name"]] = row["main_gmv_short_name"]
+        elif row["main_organization_id"] == "2":
+            merge_table[row["main_gmv_short_name"]] = row["mapped_gmv_short_name"]
+
+    table_buffer.close()
+    return merge_table
+
 # Parsing Scripts
 
 def agencies(normalize):
@@ -60,18 +172,25 @@ def agencies(normalize):
             file.write(",".join([agency_id, agency_name, agency_url, agency_timezone, agency_lang + "\n"]))
     file.close()
 
-def stops(startday, daysrange):
+def stops(startday, daysrange, ftp_login="", ftp_pass=""):
     "Parse stops for given day to output/stops.txt GTFS file"
     # Some variables
     allstops = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4c4025f0-01bf-41f7-a39f-d156d201b82b/download/stops.json").text)
     stopstable = {}
     stopattributes = {}
 
+    stopRecalcAfterMaping = {}
+    stopGdyGdaMaping = _stopmergetable()
+
+    # Town names for ZKM Gdynia stops
+    if ftp_login and ftp_pass: gdyniastoptowns = _gdyniatownnames(ftp_login, ftp_pass)
+    else: gdyniastoptowns = {}
+
     # Database to merge stops over different days
     databaseconnection = sqlite3.connect(":memory:")
     databaseconnection.row_factory = sqlite3.Row
     database = databaseconnection.cursor()
-    database.execute("CREATE TABLE stops (id text, orig_id text, name text, lat text, lon text)")
+    database.execute("CREATE TABLE stops (id text, orig_id text, name text, lat text, lon text, short_name text, merge_with text)")
     databaseconnection.commit()
 
     # Read stops to database
@@ -82,15 +201,31 @@ def stops(startday, daysrange):
         for stop in stops:
             # Read data
             original_stop_id = str(stop["stopId"])
-            stop_name = stop["stopDesc"].rstrip()
+            stop_name = stop["stopDesc"].strip()
             stop_lat = str(stop["stopLat"])
             stop_lon = str(stop["stopLon"])
+
+            # Check if stop should be merged:
+            # stop_short_name isn't saved for GDY stops, because of merging that's done later
+            if int(original_stop_id) < 30000: stop_short_name, merge_with = str(stop["stopShortName"]), None # GDA Stops
+            else: stop_short_name, merge_with = None, stopGdyGdaMaping.get(str(stop["stopShortName"]), None) # GDY stops
+
+            # Add town name for ZKM Gdynia stops
+            if int(original_stop_id) >= 30000 and gdyniastoptowns:
+                town_name = gdyniastoptowns.get(stop["stopShortName"]) or gdyniastoptowns.get(stop_name)
+                if not town_name:
+                    #pass
+                    print("No town name for ZKM Gdynia stop {} ({})".format(original_stop_id, stop_name))
+                elif  _shouldaddtownname(stop_name, town_name):
+                    stop_name = town_name + " " + stop_name
 
             # Check against database
             database.execute("SELECT * FROM stops WHERE name=? AND lat=? AND lon=?", (stop_name, stop_lat, stop_lon))
             response = database.fetchone()
+
             if response:
                 stop_id = response["id"]
+
             else:
                 # Push into database
                 response = database.execute("SELECT * FROM stops WHERE orig_id=?", (original_stop_id,))
@@ -101,7 +236,7 @@ def stops(startday, daysrange):
                     stop_id = "_".join([original_stop_id, str(stop_suffix)])
                     stop_suffix += 1
                     if stop_id not in used_ids: break
-                database.execute("INSERT INTO stops VALUES (?,?,?,?,?)", (stop_id, original_stop_id, stop_name, stop_lat, stop_lon))
+                database.execute("INSERT INTO stops VALUES (?,?,?,?,?,?,?)", (stop_id, original_stop_id, stop_name, stop_lat, stop_lon, stop_short_name, merge_with))
 
                 # Save attributes
                 stopattributes[stop_id] = {}
@@ -109,18 +244,45 @@ def stops(startday, daysrange):
                 stopattributes[stop_id]["demand"] = stop["onDemand"] == 1
 
             databaseconnection.commit()
+            if merge_with:
+                if stop_id not in stopRecalcAfterMaping: stopRecalcAfterMaping[stop_id] = []
+                stopRecalcAfterMaping[stop_id].append("-".join([day.strftime("%Y-%m-%d"), original_stop_id]))
             stopstable["-".join([day.strftime("%Y-%m-%d"), original_stop_id])] = stop_id
 
     # Export created database
     file = open("output/stops.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("stop_id,stop_name,stop_lat,stop_lon\n")
     database.execute("SELECT * FROM stops")
-    for stop in database.fetchall():
+    all_stops = database.fetchall()
+
+    for stop in all_stops:
         stop_name = "\"" + stop["name"].replace("\"", "\"\"").replace("\'", "\"\"") + "\""
-        file.write(",".join([stop["id"], stop_name, stop["lat"], stop["lon"] + "\n"]))
+
+        # Check if stop could be merged
+        if stop["merge_with"]:
+            database.execute("SELECT * FROM stops WHERE short_name=?", (stop["merge_with"], ))
+
+            # Now check if it can be merged
+            merge_with = database.fetchone()
+
+            # If it can be: merge and rewrite value in stopstable
+            if merge_with:
+                #print("Merging common stop: GDY {} -> GDA {} ({})".format(stop["id"], merge_with["id"], merge_with["name"]))
+                for recalculate_mapped in stopRecalcAfterMaping[stop["id"]]:
+                    stopstable[recalculate_mapped] = merge_with["id"]
+
+            # If not just print it to stops.txt
+            else:
+                file.write(",".join([stop["id"], stop_name, stop["lat"], stop["lon"]]) + "\n")
+
+        # If not, just write to stops.txt
+        else:
+            file.write(",".join([stop["id"], stop_name, stop["lat"], stop["lon"]]) + "\n")
+
     file.close()
     databaseconnection.commit()
-    return(stopstable, stopattributes)
+
+    return stopstable, stopattributes
 
 def routes(startday, daysrange, normalize):
     "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
@@ -140,14 +302,18 @@ def routes(startday, daysrange, normalize):
     for timediff in daysrange:
         day = startday + timedelta(days=timediff)
         routeslist[day.strftime("%Y-%m-%d")] = []
+        gdyniaroutes = _gdyniaroutenames()
         try: routes = allroutes[day.strftime("%Y-%m-%d")]["routes"]
         except KeyError: routes = allroutes[day.strftime("%Y-%m-%d")]["node"]["routes"]
         for route in routes:
             # Read data
             agency_id = str(route["agencyId"])
             original_route_id = str(route["routeId"])
-            route_short_name = route["routeShortName"]
+            route_short_name = str(route["routeShortName"])
             route_long_name = route["routeLongName"] if route["routeShortName"] != route["routeLongName"] else ""
+
+            route_long_name = route_long_name.replace(" - ", " — ")
+
             if agency_id == "2":
                 #Gdańsk Trams
                 route_type = "0"
@@ -169,8 +335,12 @@ def routes(startday, daysrange, normalize):
                 route_type = "3"
                 route_color = "2222BB,FFFFFF"
             if normalize:
-                if int(original_route_id) >= 10000 < 11000: agency_id = "98"
+                if 10000 <= int(original_route_id) < 11000: agency_id = "98"
                 else: agency_id = "99"
+
+            # Gdynia route_long_name
+            if 10000 <= int(original_route_id) < 11000 and route_short_name in gdyniaroutes:
+                route_long_name = gdyniaroutes[route_short_name]
 
             # Check against database
             database.execute("SELECT * FROM routes WHERE agency=? AND short_name=? AND long_name=?", (agency_id, route_short_name, route_long_name))
@@ -196,10 +366,11 @@ def routes(startday, daysrange, normalize):
     file.write("agency_id,route_id,route_short_name,route_long_name,route_type,route_color,route_text_color\n")
     database.execute("SELECT * FROM routes")
     for route in database.fetchall():
-        file.write(",".join([route["agency"], route["id"], route["short_name"], route["long_name"], route["type"], route["color"] + "\n"]))
+        route_name = "\"" + route["long_name"].replace("\r", "").replace("\n", "").replace("\"", "\"\"").replace("\'", "\"\"") + "\""
+        file.write(",".join([route["agency"], route["id"], route["short_name"], route_name, route["type"], route["color"] + "\n"]))
     file.close()
     databaseconnection.commit()
-    return(routeslist, routestable)
+    return routeslist, routestable
 
 def times(startday, daysrange, routeslist, routestable, stopstable, stopattributes):
     "Parse stop_times for given day to output/stop_times.txt and output/trips.txt GTFS file"
@@ -334,7 +505,7 @@ def zip():
 
 # Main Funcionlity
 
-def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False):
+def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddates=False, zkm_ftp_login="", zkm_ftp_pass=""):
     daysrange = _getrange(day)
     #daysrange = range(1)
     if daysrange:
@@ -350,7 +521,7 @@ def gdanskgtfs(day=date.today(), normalize=False, exporttables=False, extenddate
         feedinfo(day, daysrange, extenddates)
 
         print("Parsing stops")
-        stable, sattrib  = stops(day, daysrange)
+        stable, sattrib  = stops(day, daysrange, zkm_ftp_login, zkm_ftp_pass)
 
         print("Parsing routes")
         rlist, rtable = routes(day, daysrange, normalize)
@@ -375,6 +546,8 @@ if __name__ == "__main__":
     argprs.add_argument("-t", "--tables", action="store_true", required=False, dest="tables", help="export routes and stops tables to tables.json")
     argprs.add_argument("-n", "--normalize", action="store_true", required=False, dest="normalize", help="normalize agencies to ZTM Gdańsk and ZKM Gdynia")
     argprs.add_argument("-d", "--day", default="", required=False, metavar="YYYY-MM-DD", dest="day", help="the start day for which the feed should start")
+    argprs.add_argument("-zl", "--zkm-ftp-login", default="", required=False, dest="zkm_ftp_login", help="login for ZKM Gdynia FTP server (ftp://ftp.zkmgdynia.pl/), to get fixed stop names")
+    argprs.add_argument("-zp", "--zkm-ftp-pass", default="", required=False, dest="zkm_ftp_pass", help="password for ZKM Gdynia FTP server")
 
     args = vars(argprs.parse_args())
     if args["day"]: day = datetime.strptime(args["day"], "%Y-%m-%d").date()
@@ -384,5 +557,5 @@ if __name__ == "__main__":
  /__  _|  _. ._   _ |  /__  | |_ (_
  \_| (_| (_| | | _> |< \_|  | |  __)
     """)
-    gdanskgtfs(day, args["normalize"], args["tables"], args["extend"])
+    gdanskgtfs(day, args["normalize"], args["tables"], args["extend"], args["zkm_ftp_login"], args["zkm_ftp_pass"])
     print("=== Done! In %s sec. ===" % round(time.time() - st, 3))
