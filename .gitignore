@@ -6,3 +6,5 @@ ignore*
 tables.json
 ._.DS_Store
 .DS_Store
+*.sh
+*.bat
