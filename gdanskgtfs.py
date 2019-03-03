@@ -29,7 +29,8 @@ def _gettime(string):
 def _checkday(day):
     "Check if schedules are avilable for given date"
     timespans = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/9c3d6fed-5394-4ef1-b2c6-c8716999149c/download/stoptimesspan.json").text)
-    timespans = timespans["stopTimesSpans"]
+    if "stopTimesSpans" in timespans: timespans["stopTimesSpans"]
+    else: timespans["stopTimesSpan"]
     for agency in timespans:
         start = datetime.strptime(agency["startDate"], "%Y-%m-%d").date()
         end = datetime.strptime(agency["endDate"], "%Y-%m-%d").date()
