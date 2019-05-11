@@ -28,7 +28,7 @@ def _gettime(string):
 
 def _checkday(day):
     "Check if schedules are avilable for given date"
-    timespans = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/9c3d6fed-5394-4ef1-b2c6-c8716999149c/download/stoptimesspan.json").text)
+    timespans = json.loads(requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/9c3d6fed-5394-4ef1-b2c6-c8716999149c/download/stoptimesspan.json").text)
     if "stopTimesSpans" in timespans: timespans = timespans["stopTimesSpans"]
     else: timespans = timespans["stopTimesSpan"]
     for agency in timespans:
@@ -162,7 +162,7 @@ def agencies(normalize):
         file.write("99,ZTM Gdańsk,http://ztm.gda.pl,Europe/Warsaw,pl\n")
         file.write("98,ZKM Gdynia,http://zkmgdynia.pl,Europe/Warsaw,pl\n")
     else:
-        agencies = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/dff5f71f-0134-4ef3-8116-73c1a8e929a5/download/agency.json").text)
+        agencies = json.loads(requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/dff5f71f-0134-4ef3-8116-73c1a8e929a5/download/agency.json").text)
         agencies = agencies["agency"]
         for agency in agencies:
             agency_id = str(agency["agencyId"])
@@ -176,7 +176,7 @@ def agencies(normalize):
 def stops(startday, daysrange, ftp_login="", ftp_pass=""):
     "Parse stops for given day to output/stops.txt GTFS file"
     # Some variables
-    allstops = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4c4025f0-01bf-41f7-a39f-d156d201b82b/download/stops.json").text)
+    allstops = json.loads(requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/4c4025f0-01bf-41f7-a39f-d156d201b82b/download/stops.json").text)
     stopstable = {}
     stopattributes = {}
 
@@ -288,7 +288,7 @@ def stops(startday, daysrange, ftp_login="", ftp_pass=""):
 def routes(startday, daysrange, normalize):
     "Parse routes for given day to output/routes.txt GTFS file. If normalize is True, then agency_id will be filtered to ZTM or ZKM."
     # Some variables
-    allroutes = json.loads(requests.get("http://91.244.248.30/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/22313c56-5acf-41c7-a5fd-dc5dc72b3851/download/routes.json").text)
+    allroutes = json.loads(requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/22313c56-5acf-41c7-a5fd-dc5dc72b3851/download/routes.json").text)
     routeslist = {}
     routestable = {}
 
@@ -385,7 +385,7 @@ def times(startday, daysrange, routeslist, routestable, stopstable, stopattribut
             print("\033[1A\033[KParsing stop_times: Day %s, route %s" % (day, route))
             trips = {}
             try:
-                times = json.loads(requests.get("http://87.98.237.99:88/stopTimes?date=%s&routeId=%s" % (day, route)).text)
+                times = json.loads(requests.get("http://ckan2.multimediagdansk.pl/stopTimes?date=%s&routeId=%s" % (day, route)).text)
                 times = times["stopTimes"]
             except (json.decoder.JSONDecodeError, KeyError):
                 continue
@@ -481,7 +481,7 @@ def feedinfo(startday, daysrange, extenddates):
     startday = startday.strftime("%Y%m%d")
     file = open("output/feed_info.txt", "w", encoding="utf-8", newline="\r\n")
     file.write("feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version\n")
-    file.write("Zarząd Transportu Miejskiego w Gdańsku,\"http://91.244.248.30/dataset/tristar\",pl,%s,%s,%s\n" % (startday, endday, date.today().strftime("%Y-%m-%d")))
+    file.write("Zarząd Transportu Miejskiego w Gdańsku,\"https://ckan.multimediagdansk.pl/dataset/tristar\",pl,%s,%s,%s\n" % (startday, endday, datetime.today().strftime("%Y-%m-%d %H:%M:%S")))
     file.close()
 
 # Utility Scripts
@@ -553,7 +553,7 @@ if __name__ == "__main__":
     args = vars(argprs.parse_args())
     if args["day"]: day = datetime.strptime(args["day"], "%Y-%m-%d").date()
     else: day = date.today()
-    print("""
+    print(r"""
   __                    __ ___ _  __
  /__  _|  _. ._   _ |  /__  | |_ (_
  \_| (_| (_| | | _> |< \_|  | |  __)
