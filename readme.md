@@ -1,52 +1,59 @@
-# GdanskGTFS
+# TristarGTFS
 
 ## Description
-Creates GTFS data feed for Gdańsk and Gdynia.
-Data comes from [Open Gdańsk CKAN project](http://91.244.248.19/dataset/tristar).
+Creates GTFS/GTFS-Realtime data feed for Gdańsk and Gdynia.  
+Data comes from [Open Gdańsk project](https://ckan.multimediagdansk.pl/dataset/tristar) and [Gdynia open data project](http://otwartedane.gdynia.pl/dataset?tags=GTFS).  
+The script can also generate shapes.txt for Gdynia shcedules, which whill in turn use data from [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
 
-## Some precautions
+### Some precautions
 
 - Produced feed will use extended type 800 for trolleybuses.
 - Data is created up to last day, when schedules are avialable for all agencies.
-- Agencies provided by ZTM Gdańsk are actually line operators. This data is too deatiled and will misslead users, so if the feed is going to be used for public transport users, please use the `--normalize` option.
-- ZTM Gdańsk shares their data under [CC BY](http://www.opendefinition.org/licenses/cc-by) license, you have to give a credit, according to [ZTM Gdańsk usage terms (Polish)](http://91.244.248.19/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/bdf70c01-ad02-4317-bc61-31a3ba3b1bba/download/regulamin-korzystania-z-danych.pdf). The ZTM Gdańsk name, link to their page on Open Gdańsk project and data download date will all be included in feed_info.txt file (under columns `feed_provider_name, feed_publisher_url and feed_version`).
+- Both ZTM Gdańsk and ZKM Gdynia data sources share their data under [CC BY](http://www.opendefinition.org/licenses/cc-by) license, so you have to credit them.  
+  This can be done by exposing the data from `feed_info.txt` file, columns `feed_provider_name`, `feed_publisher_url` and `feed_version`.
 
 ### Ids
-Because stops and routes are publish seperately for each date, the stop_id and route_id in created GTFS are different from those used by ZTM.
-To help you with using RT data, if you use the `--tables` option, a file tables.json will be created, with mapping of ids used by Gdańsk to ids in the GTFS.
-The key of each table is created using scheme `YYYY-MM-DD-[ZTM ID]`, and the value is the GTFS id.
+Because `route_id`s, `trip_id`s and `service_id`s could collide
+between ZTM Gdańsk and ZKM Gdynia data sources,
+each `route_id`, `trip_id` and `service_id` is prefixed with
+`1:` for ZTM Gdańsk data and `2:` for ZKM Gdynia data.
 
-Also, there are two additional columns, you can use them instead of the `--tables` option:
-- File *stop_times.txt*: Column `original_stop_id` - stop_id as referenced by ZTM,
-- File *trips.txt*: Column `original_route_id` - route_id as referenced by ZTM.
-
-
-Also trip_id in Gdańsk represents a route variant, so the trip_id in GTFS is created using using this scheme: `R[original_route_id]D[date]T[trip_id]S[busServiceName]O[order]`.
+As of the time writing [the stop merge table](https://ckan.multimediagdansk.pl/dataset/tristar/resource/f8a5bedb-7925-40c9-8d66-dbbc830939b1)
+references unexisting stops — it is **not** used.
+All ZTM Gdańsk `stop_id`s are asserted to be *< 30000* and all ZKM Gdynia `stop_id`s are asserted to be *>= 30000*.
 
 ## Running
 
 ### First Launch
 
-Of course you will need [Python3](https://www.python.org), with [Requests](http://docs.python-requests.org/en/master/) module.
-Befor launching  install required modules with `pip3 install -r requirements.txt`
-And then simply `python3 gdanskgtfs.py -n`.
+Of course you will need [Python3](https://www.python.org) (version 3.6 or later), with these modules:
+- [Requests](https://2.python-requests.org/en/master/),
+- [pyroutelib3](https://pypi.org/project/pyroutelib3/) >= 1.3,
+- [rdp](https://pypi.org/project/rdp/),
+- [gtfs-realtime-bindings](https://pypi.org/project/gtfs-realtime-bindings/) >= 0.0.5.
 
-Warning: depending on your internet connection, GTFS creation can take up to 20 minutes!
+Before launching install required modules with `pip3 install -r requirements.txt`  
+Each script can launch without any command line options, but you may want to take a look at them.
 
-### Configuration
+### Static GTFS - tristargtfs.py
+`python3 tristargtfs.py` - Creates GTFS file in `gtfs.zip` without shapes.
 
-There are three command line options:
+Options:
+- **-o / --output-file TARGET-PATH-OF-GTFS.zip**: Destination path of the gtfs archive,
+- **-s / --shapes**: Use OSM to gerenate shapes for ZKM Gdynia + copy ZTM Gdańsk shapes.
 
-- **--help / -h** Prints all available options with their descriptions,
+### Realtime GTFS - tristargtfs_realtime.py
+`python3 tristargtfs_realtime.py` - Creates binary GTFS-RT file in `gtfs-rt.pb` for [mkuran.pl Tristar GTFS](https://mkuran.pl/feed/)
 
-- **--normalize / -n** Fixes agencies, as the ones provided by ZTM Gdańsk will mislead feed users,
-
-- **--day / -d YYYY-MM-DD** Tries to download schedules starting from given date, insted of those starting today,
-
-- **--tables / -t** Creates tables.json file with mapping from route & stop ZTM IDs to those used in the GTFS,
-
-- **--extend / -e** Aritficially extends dates avialable in the feed to 30 days, using latest avialable schedules for each weekday.
+Options:
+- **-o / --output-file TARGET-PATH-OF-GTFS-RT.pb**: Destination of gtfs-realtime file,
+- **--gtfs PATH-OR-URL-TO-GTFS**: Path/URL to the Tristar GTFS file to use as a base for RT data,
+- **--readable**: Output data to a human-readable protobuff instead of binary one,
+- **--debug**: Do some more printing when there are issues with encountered data,
+- **-l / --loop**: Run the script in a loop - autmoatically update the taget-file,
+- **-p / --peroid SECONDS**: How often should the target-file should be updated (for *--loop*, default 30s),
+- **--gtfs-check-peroid SECONDS**: How often should the script check if gtfs file has changed (for *-loop*, default 1800s/30min).
 
 ## License
 
-*GdanskGTFS* is provided under the MIT license, included in the `license.md` file.
+*TristarGTFS* is provided under the MIT license, included in the `license.md` file.

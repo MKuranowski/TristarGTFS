@@ -1,10 +1,18 @@
 __pycache__/
-output/*
+
+shape-errors/*
+gdynia/*
+gdansk/*
+gtfs/*
+
 ignore*
+
 *.zip
 *.html
-tables.json
-._.DS_Store
-.DS_Store
+*.pb
 *.sh
 *.bat
+
+# Windows shit
+._.DS_Store
+.DS_Store
