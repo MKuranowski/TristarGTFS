@@ -18,6 +18,11 @@ import re
 import io
 import os
 
+__title__ = "TristarGTFS"
+__author__ = "Mikołaj Kuranowski"
+__email__ = "mikolaj@mkuran.pl"
+__license__ = "MIT"
+
 @contextmanager
 def time_limit(sec):
     "Time limter based on https://gist.github.com/Rabbit52/7449101"

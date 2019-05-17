@@ -11,6 +11,11 @@ import os
 import io
 import re
 
+__title__ = "TristarGTFS-Realtime"
+__author__ = "Mikołaj Kuranowski"
+__email__ = "mikolaj@mkuran.pl"
+__license__ = "MIT"
+
 def is_url(url):
     if url.startswith("https://") or url.startswith("ftp://") or url.startswith("http://"):
         return True
