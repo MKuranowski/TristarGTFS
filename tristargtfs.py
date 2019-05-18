@@ -282,8 +282,8 @@ class TristarGtfs:
 
         file = open("gtfs/agency.txt", mode="w", encoding="utf8", newline="\r\n")
         file.write('agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_fare_url\n')
-        file.write('1,"Zarząd Transportu Miejskiego w Gdańsku","https://ztm.gda.pl/",Europe/Warsaw,pl,+48 58 520 57 75,"https://ztm.gda.pl/hmvc/index.php/test/wiecej/taryfa"\n')
-        file.write('2,"Zarząd Komunikacji Miejskiej w Gdyni","https://zkmgdynia.pl/",Europe/Warsaw,pl,+48 695 174 194,"https://zkmgdynia.pl/bilety-jednorazowe-zkm-w-gdyni-i-metropolitalne-mzkzg"\n')
+        file.write('1,"ZTM Gdańsk","https://ztm.gda.pl/",Europe/Warsaw,pl,+48 58 520 57 75,"https://ztm.gda.pl/hmvc/index.php/test/wiecej/taryfa"\n')
+        file.write('2,"ZKM Gdynia","https://zkmgdynia.pl/",Europe/Warsaw,pl,+48 695 174 194,"https://zkmgdynia.pl/bilety-jednorazowe-zkm-w-gdyni-i-metropolitalne-mzkzg"\n')
         file.close()
 
         file = open("gtfs/feed_info.txt", mode="w", encoding="utf8", newline="\r\n")
@@ -291,14 +291,14 @@ class TristarGtfs:
 
         if self.shapes:
             file.write(",".join([
-                '"Data: Zarząd Transportu Miejskiego w Gdańsku, Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) and ZKM Gdynia shapes from © OpenStreetMap contributors (under ODbL license) with modifications from GdanskGTFS script"',
-                '"https://github.com/MKuranowski/GdanskGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+                '"Data: Zarząd Transportu Miejskiego w Gdańsku, Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) and ZKM Gdynia shapes from © OpenStreetMap contributors (under ODbL license) with modifications from TristarGTFS script"',
+                '"https://github.com/MKuranowski/TristarGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
             ]))
 
         else:
             file.write(",".join([
-                '"Data: Zarząd Transportu Miejskiego w Gdańsku and Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) with modifications from GdanskGTFS script"',
-                '"https://github.com/MKuranowski/GdanskGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+                '"Data: Zarząd Transportu Miejskiego w Gdańsku and Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) with modifications from TristarGTFS script"',
+                '"https://github.com/MKuranowski/TristarGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
             ]))
 
         file.close()
