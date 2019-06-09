@@ -349,7 +349,7 @@ class TristarGtfs:
 
                 # Strip Gdynia from stop names — that's how it's printed on maps, see mzkzg.org
                 if row["stop_name"].startswith("Gdynia"):
-                    row["stop_name"] = row["stop_name"][7:]merge_stops
+                    row["stop_name"] = row["stop_name"][7:]
 
                 if self.shapes:
                     self.shape_gen.stops[row["stop_id"]] = (row["stop_lat"], row["stop_lon"])
