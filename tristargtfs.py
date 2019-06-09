@@ -324,7 +324,7 @@ class TristarGtfs:
         req.encoding = "utf-8"
 
         for row in csv.DictReader(io.StringIO(req.text)):
-            src, to = None, None
+            source, target = None, None
 
             if row["mapped_organization_id"] == "2":
                 if int(row["mapped_gmv_short_name"]) < 30000: source = str(30000 + int(row["mapped_gmv_short_name"]))
@@ -349,7 +349,7 @@ class TristarGtfs:
 
                 # Strip Gdynia from stop names — that's how it's printed on maps, see mzkzg.org
                 if row["stop_name"].startswith("Gdynia"):
-                    row["stop_name"] = row["stop_name"][7:]
+                    row["stop_name"] = row["stop_name"][7:]merge_stops
 
                 if self.shapes:
                     self.shape_gen.stops[row["stop_id"]] = (row["stop_lat"], row["stop_lon"])
@@ -591,7 +591,7 @@ class TristarGtfs:
         self.static_files()
 
         self.merge_routes()
-        self.merge_stops()
+        #self.merge_stops() # The merge table maps to some non-existing stops and generally causes problems
         self.merge_dates()
         self.merge_trips_shapes()
         self.merge_times()
