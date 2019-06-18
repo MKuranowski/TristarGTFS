@@ -317,28 +317,30 @@ class TristarGtfs:
         writer.writeheader()
 
         # Load merge table
-        print("\033[1A\033[K" + "Loading stop merge table")
+        # The merge table maps to some non-existing stops and generally causes problems
 
-        req = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/f8a5bedb-7925-40c9-8d66-dbbc830939b1/download/przystanki_wspolnegda_gdy.csv")
-        req.raise_for_status()
-        req.encoding = "utf-8"
+        #print("\033[1A\033[K" + "Loading stop merge table")
 
-        for row in csv.DictReader(io.StringIO(req.text)):
-            source, target = None, None
+        #req = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/f8a5bedb-7925-40c9-8d66-dbbc830939b1/download/przystanki_wspolnegda_gdy.csv")
+        #req.raise_for_status()
+        #req.encoding = "utf-8"
 
-            if row["mapped_organization_id"] == "2":
-                if int(row["mapped_gmv_short_name"]) < 30000: source = str(30000 + int(row["mapped_gmv_short_name"]))
-                else: source = row["mapped_gmv_short_name"]
-            else:
-                source = row["mapped_gmv_short_name"]
+        #for row in csv.DictReader(io.StringIO(req.text)):
+        #    source, target = None, None
 
-            if row["main_organization_id"] == "2":
-                if int(row["main_gmv_short_name"]) < 30000: target = str(30000 + int(row["main_gmv_short_name"]))
-                else: target = row["main_gmv_short_name"]
-            else:
-                target = row["main_gmv_short_name"]
+        #    if row["mapped_organization_id"] == "2":
+        #        if int(row["mapped_gmv_short_name"]) < 30000: source = str(30000 + int(row["mapped_gmv_short_name"]))
+        #        else: source = row["mapped_gmv_short_name"]
+        #    else:
+        #        source = row["mapped_gmv_short_name"]
 
-            #self.stop_merge_table[source] = target
+        #    if row["main_organization_id"] == "2":
+        #        if int(row["main_gmv_short_name"]) < 30000: target = str(30000 + int(row["main_gmv_short_name"]))
+        #        else: target = row["main_gmv_short_name"]
+        #    else:
+        #        target = row["main_gmv_short_name"]
+
+        #    self.stop_merge_table[source] = target
 
         print("\033[1A\033[K" + "Merging Gdańsk stops")
 
@@ -591,7 +593,7 @@ class TristarGtfs:
         self.static_files()
 
         self.merge_routes()
-        #self.merge_stops() # The merge table maps to some non-existing stops and generally causes problems
+        self.merge_stops()
         self.merge_dates()
         self.merge_trips_shapes()
         self.merge_times()
