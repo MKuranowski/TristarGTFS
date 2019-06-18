@@ -305,7 +305,7 @@ class TristarGtfs:
 
     @staticmethod
     def compress(target="gtfs.zip"):
-        print("\033[1A\033[K" + "Loading Gdynia times for shape generations")
+        print("\033[1A\033[K" + "Compressing to " + target)
         with zipfile.ZipFile(target, mode="w", compression=zipfile.ZIP_DEFLATED) as arch:
             for file in os.listdir("gtfs"):
                 if not file.endswith(".txt"): continue
