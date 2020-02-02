@@ -32,6 +32,9 @@ def time_limit(sec):
     try: yield
     finally: signal.alarm(0)
 
+def csv_escape(txt):
+    return '"' + txt.replace('"', '""') + '"'
+
 def gdansk_route_names():
     req = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/22313c56-5acf-41c7-a5fd-dc5dc72b3851/download/routes.json")
     req.raise_for_status()
@@ -164,7 +167,6 @@ class Shaper:
 
         else:
             start, end = math.nan, math.nan
-            dist_ratio = math.nan
             status = "no_nodes_found"
 
         # If we failed, catch some more info on why
@@ -227,9 +229,13 @@ class Shaper:
         self.file.close()
 
 class TristarGtfs:
-    def __init__(self, shapes):
+    def __init__(self, shapes, publisher_name=None, publisher_url=None):
         self.shapes = shapes
         self.shape_gen = Shaper() if shapes else None
+
+        self.data_download = None
+        self.publisher_name = publisher_name
+        self.publisher_url = publisher_url
 
         self.gdansk = None
         self.gdynia = None
@@ -246,6 +252,8 @@ class TristarGtfs:
 
     def download(self):
         print("\033[1A\033[K" + "Downloading Gdansk GTFS")
+        self.data_download = datetime.today()
+
         req = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/30e783e4-2bec-4a7d-bb22-ee3e3b26ca96/download/gtfsgoogle.zip")
         req.raise_for_status()
         self.gdansk_file.write(req.content)
@@ -278,29 +286,42 @@ class TristarGtfs:
         return gdynia_trips
 
     def static_files(self):
-        print("\033[1A\033[K" + "Creating feed_info.txt and agency.txt")
+        print("\033[1A\033[K" + "Creating agency.txt, feed_info.txt and attributions.txt")
+        version = self.data_download.strftime("%Y-%m-%d %H:%M:%S")
 
+        # Agency
         file = open("gtfs/agency.txt", mode="w", encoding="utf8", newline="\r\n")
         file.write('agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_fare_url\n')
         file.write('1,"ZTM Gdańsk","https://ztm.gda.pl/",Europe/Warsaw,pl,+48 58 520 57 75,"https://ztm.gda.pl/hmvc/index.php/test/wiecej/taryfa"\n')
         file.write('2,"ZKM Gdynia","https://zkmgdynia.pl/",Europe/Warsaw,pl,+48 695 174 194,"https://zkmgdynia.pl/bilety-jednorazowe-zkm-w-gdyni-i-metropolitalne-mzkzg"\n')
         file.close()
 
-        file = open("gtfs/feed_info.txt", mode="w", encoding="utf8", newline="\r\n")
-        file.write('feed_publisher_name,feed_publisher_url,feed_lang,feed_version\n')
+        # Feed Info
+        if self.publisher_name and self.publisher_url:
+            file = open("gtfs/feed_info.txt", mode="w", encoding="utf8", newline="\r\n")
+            file.write("feed_publisher_name,feed_publisher_url,feed_lang,feed_version\n")
+            file.write(f"{csv_escape(self.publisher_name)},{csv_escape(self.publisher_url)},"
+                       f"pl,{version}\n")
+            file.close()
+
+        # Attributions
+        file = open("gtfs/attributions.txt", mode="w", encoding="utf8", newline="\r\n")
+        file.write("attribution_id,agency_id,organization_name,is_producer,is_operator,"
+                       "is_authority,is_data_source,attribution_url\n")
+        
+        file.write('0,,"TristarGTFS (provided by Mikołaj Kuranowski)",1,0,0,0,'
+                       '"https://github.com/MKuranowski/TristarGTFS"\n')
+        
+        file.write(f'1,1,"ZTM Gdańsk (data retrieved {version})",0,0,1,1,'
+                       '"https://ztm.gda.pl"\n')
+        
+        file.write(f'2,2,"ZKM Gdynia (data retrieved {version})",0,0,1,1,'
+                       '"https://zkmgdynia.pl/"\n')
 
         if self.shapes:
-            file.write(",".join([
-                '"Data: Zarząd Transportu Miejskiego w Gdańsku, Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) and ZKM Gdynia shapes from © OpenStreetMap contributors (under ODbL license) with modifications from TristarGTFS script"',
-                '"https://github.com/MKuranowski/TristarGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-            ]))
-
-        else:
-            file.write(",".join([
-                '"Data: Zarząd Transportu Miejskiego w Gdańsku and Zarząd Komunikacji Miejskiej w Gdyni (both under CC-BY license) with modifications from TristarGTFS script"',
-                '"https://github.com/MKuranowski/TristarGTFS"', "pl", datetime.today().strftime("%Y-%m-%d %H:%M:%S")
-            ]))
-
+            file.write('3,2,"ZKM Gdynia bus shapes (under ODbL licnese): © OpenStreetMap contributors"'
+                       ',0,0,1,1,"https://www.openstreetmap.org/copyright"\n')
+        
         file.close()
 
     @staticmethod
@@ -362,8 +383,8 @@ class TristarGtfs:
         with self.gdynia.open("stops.txt") as buffer:
             reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
             for row in reader:
-                if int(row["stop_id"]) < 30000: source = str(30000 + int(row["stop_id"]))
-                else: source = row["stop_id"]
+                #if int(row["stop_id"]) < 30000: source = str(30000 + int(row["stop_id"]))
+                #else: source = row["stop_id"]
 
                 #if row["stop_id"] in self.stop_merge_table: continue
 
@@ -585,10 +606,13 @@ class TristarGtfs:
         file.close()
 
     @classmethod
-    def create(cls, shapes, target="gtfs.zip"):
+    def create(cls, shapes, target="gtfs.zip", publisher_name=None, publisher_url=None):
         print("Starting TristarGTFS")
 
-        self = cls(shapes)
+        for file in os.scandir("gtfs"):
+            os.remove(file.path)
+
+        self = cls(shapes, publisher_name, publisher_url)
 
         self.static_files()
 
@@ -606,17 +630,20 @@ if __name__ == "__main__":
     argprs.add_argument("-o", "--output-file", default="gtfs.zip", required=False, metavar="(path)", dest="target", help="destination of the gtfs file (defualt: gtfs.zip)")
     argprs.add_argument("-s", "--shapes", action="store_true", required=False, help="generate shapes for ZKM Gdynia and merge with ZTM Gdańsk shapes")
 
+    argprs.add_argument("-pn", "--publisher-name", required=False, metavar="NAME", dest="publisher_name", help="value of feed_publisher_name")
+    argprs.add_argument("-pu", "--publisher-url", required=False, metavar="URL", dest="publisher_url", help="value of feed_publisher_url")
+
     args = argprs.parse_args()
 
-    print("""
+    print(r"""
   _______   _     _              _____ _______ ______ _____
  |__   __| (_)   | |            / ____|__   __|  ____/ ____|
     | |_ __ _ ___| |_ __ _ _ __| |  __   | |  | |__ | (___
-    | | '__| / __| __/ _` | '__| | |_ |  | |  |  __| \___ \\
+    | | '__| / __| __/ _` | '__| | |_ |  | |  |  __| \___ \
     | | |  | \__ \ || (_| | |  | |__| |  | |  | |    ____) |
     |_|_|  |_|___/\__\__,_|_|   \_____|  |_|  |_|   |_____/
     """)
 
-    TristarGtfs.create(args.shapes, args.target)
+    TristarGtfs.create(args.shapes, args.target, args.publisher_name, args.publisher_url)
 
     print("=== Done! In %s sec. ===" % round(time.time() - st, 3))
