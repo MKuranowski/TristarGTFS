@@ -313,18 +313,17 @@ class TristarGtfs:
         file.write("attribution_id,agency_id,organization_name,is_producer,is_operator,"
                        "is_authority,is_data_source,attribution_url\n")
 
-        file.write('0,,"TristarGTFS (provided by Mikołaj Kuranowski)",1,0,0,0,'
-                       '"https://github.com/MKuranowski/TristarGTFS"\n')
+        file.write(f'1,1,"Based on data by: Zarząd Transportu Miejskiego w Gdańsku '
+                   f'(retrieved {version})",0,0,1,1,"http://www.ztm.gda.pl/otwarty_ztm"\n')
 
-        file.write(f'1,1,"ZTM Gdańsk (data retrieved {version})",0,0,1,1,'
-                       '"https://ztm.gda.pl"\n')
-
-        file.write(f'2,2,"ZKM Gdynia (data retrieved {version})",0,0,1,1,'
-                       '"https://zkmgdynia.pl/"\n')
+        file.write(f'2,2,"Based on data by: Zarząd Dróg i Zieleni w Gdyni (retrieved {version}, '
+                   'agency not responsible for this dataset)",0,0,1,1,'
+                    '"http://otwartedane.gdynia.pl/pl/dataset/informacje-o-rozkladach-jazdy-i-lokalizacji-przystankow"\n')
 
         if self.shapes:
-            file.write('3,2,"ZKM Gdynia bus shapes (under ODbL licnese): © OpenStreetMap contributors"'
-                       ',0,0,1,1,"https://www.openstreetmap.org/copyright"\n')
+            file.write('3,2,"ZKM Gdynia bus shapes based on data by: © OpenStreetMap contributors"'
+                       f' (retrieved {version}, under ODbL license)'
+                       ',0,0,1,1,"https://www.openstreetmap.org/copyright/"\n')
 
         file.close()
 
