@@ -40,74 +40,14 @@ def gdansk_route_names():
     req.raise_for_status()
     all_routes = req.json()
 
-    route_names = {"F5": "Żabi Kruk — Westerplatte — Brzeźno", "F6": "Targ Rybny — Sobieszewo"}
+    route_names = {"F5": "Żabi Kruk - Westerplatte - Brzeźno", "F6": "Targ Rybny - Sobieszewo"}
 
     for routes in map(lambda i: all_routes[i]["routes"], sorted(all_routes.keys())):
         for route in routes:
-            if route["routeShortName"] in route_names: continue
-            else: route_names[route["routeShortName"]] = route["routeLongName"].replace(" - ", " — ")
-
-    return route_names
-
-def gdynia_route_names():
-    req = requests.get("https://zkmgdynia.pl/api/rozklady/1.0.0/pl/list")
-    req.raise_for_status()
-    req.encoding = "utf-8"
-    req = req.json()
-
-    route_names = {
-        "F": "Gdynia Plac Kaszubski — Gdynia Terminal Promowy",
-        "N40": "Gdynia Plac Kaszubski → Gdynia Podgórze Górne | "
-               "Gdynia Podgórze Dolne → Gdynia Dworzec Gł. PKP"
-    }
-
-    for route_data in chain(req["resultData"]["planned"]["items"]["trol"]["items"],\
-                            req["resultData"]["planned"]["items"]["bus"]["items"]):
-
-        route = route_data["title"].rstrip("*")
-
-        if route in route_names:
-            continue
-        elif len(route_data["hint"]) < 1:
-            warn("Route {} has no long name in ZKM API".format(route))
-            continue
-
-        else:
-            name = route_data["hint"][0]
-
-        if "<" not in name and ">" not in name and "-" in name:
-            name_pattern = [name.split("-")[0], "-", name.split("-")[1]]
-        else:
-            name_pattern = list(map(str.strip, re.split(r"([<>-]{2,})", name)))
-
-        for idx, name_part in enumerate(name_pattern):
-            # Arrows
-            if name_part == "<->" or name_part == "-":
-                name_pattern[idx] = "—"
-
-            elif name_part == "->":
-                name_pattern[idx] = "→"
-
-            elif name_part == "<-":
-                name_pattern[idx] = "←"
-            # Names
+            if route["routeShortName"] in route_names:
+                continue
             else:
-
-                # Get rid of brackets
-                if "(" in name_part:
-                    name_part = name_part.split("(")[0].strip()
-
-                # Avoid something like "Gdynia: Gdynia Dworzec Gł. PKP"
-                if ":" in name_part:
-                    town_name, stop_name = name_part.split(":")
-
-                    if set(town_name.split()).isdisjoint(stop_name.split()):
-                        name_pattern[idx] = town_name + " " + stop_name
-
-                    else:
-                        name_pattern[idx] = stop_name
-
-        route_names[route] = " ".join(name_pattern).replace("  ", " ").strip()
+                route_names[route["routeShortName"]] = route["routeLongName"]
 
     return route_names
 
@@ -410,7 +350,6 @@ class TristarGtfs:
 
         route_names = {}
         route_names.update(gdansk_route_names())
-        route_names.update(gdynia_route_names())
 
         print("\033[1A\033[K" + "Merging Gdańsk routes")
 
@@ -436,8 +375,7 @@ class TristarGtfs:
                 row["route_id"] = "2:" + row["route_id"]
 
                 row["route_short_name"] = row["route_short_name"].strip()
-
-                row["route_long_name"] = route_names.get(row["route_short_name"], "")
+                row["route_long_name"] = row["route_long_name"].replace('""', '"')
 
                 row["route_color"], row["route_text_color"] = route_color(row["agency_id"], row["route_type"])
 
