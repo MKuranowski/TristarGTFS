@@ -1,34 +1,31 @@
-from itertools import chain
-from tempfile import TemporaryFile
-from datetime import date, datetime, timedelta
 import argparse
-from typing import Any
-import requests
-import zipfile
-import time
 import csv
 import io
 import os
+import time
+import zipfile
+from datetime import date, datetime, timedelta
+from itertools import chain
+from tempfile import TemporaryFile
+from typing import Any, Dict, List, Set, Tuple
+
+import requests
 
 __title__ = "TristarGTFS"
 __author__ = "Mikołaj Kuranowski"
-__email__ = "mikolaj@mkuran.pl"
 __license__ = "MIT"
+__email__ = "".join(chr(i) for i in [109, 107, 117, 114, 97, 110, 111, 119, 115, 107, 105, 32, 91,
+                                     1072, 116, 93, 32, 103, 109, 97, 105, 108, 46, 99, 111, 109])
 
 
-def csv_escape(txt: str) -> str:
-    """Escapes qutoes within a text that's supposed to go into a CSV cell"""
-    return '"' + txt.replace('"', '""') + '"'
-
-
-def gdansk_route_names() -> dict[str, str]:
+def gdansk_route_names() -> Dict[str, str]:
     """Returns a mapping from route_short_name to route_long_name for ZTM Gdańsk,
     as route_long_names aren't included in the main GTFS."""
     req = requests.get("https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/22313c56-5acf-41c7-a5fd-dc5dc72b3851/download/routes.json")  # noqa
     req.raise_for_status()
     all_routes = req.json()
 
-    route_names: dict[str, str] = {
+    route_names: Dict[str, str] = {
         "F5": "Żabi Kruk - Westerplatte - Brzeźno",
         "F6": "Targ Rybny - Sobieszewo"}
 
@@ -42,7 +39,7 @@ def gdansk_route_names() -> dict[str, str]:
     return route_names
 
 
-def route_color(agency: str, traction: str) -> tuple[str, str]:
+def route_color(agency: str, traction: str) -> Tuple[str, str]:
     """Generate route_color and route_text_color given an agency and route_type"""
     # Colors from mzkzg.org map
 
@@ -77,9 +74,9 @@ class TristarGtfs:
 
         # self.stop_merge_table = {}
 
-        self.active_services: set[str] = set()
-        self.active_shapes: set[str] = set()
-        self.active_trips: set[str] = set()
+        self.active_services: Set[str] = set()
+        self.active_shapes: Set[str] = set()
+        self.active_trips: Set[str] = set()
 
         self.download()
 
@@ -259,8 +256,8 @@ class TristarGtfs:
                                 extrasaction="ignore")
         writer.writeheader()
 
-        gdansk_dates: list[dict[str, Any]] = []
-        gdynia_dates: list[dict[str, Any]] = []
+        gdansk_dates: List[Dict[str, Any]] = []
+        gdynia_dates: List[Dict[str, Any]] = []
 
         print("\033[1A\033[K" + "Loading Gdańsk services")
 
@@ -292,7 +289,7 @@ class TristarGtfs:
             max(i["date"] for i in gdynia_dates))
 
         # Figure out which service is active on every day between start_date and end_date
-        services_on_date: dict[date, set[str]] = {}
+        services_on_date: Dict[date, Set[str]] = {}
         for service_date in chain(gdansk_dates, gdynia_dates):
             if service_date["date"] > end_date or service_date["date"] < start_date:
                 continue
