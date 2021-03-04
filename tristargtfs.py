@@ -403,6 +403,8 @@ class TristarGtfs:
                 if row["service_id"] not in self.active_services:
                     continue
 
+                row["trip_headsign"] = row["trip_headsign"].rstrip(" 0123456789")
+
                 self.active_trips.add(row["trip_id"])
                 self.active_shapes.add(row["shape_id"])
                 writer.writerow(row)
@@ -419,6 +421,8 @@ class TristarGtfs:
 
                 if row["service_id"] not in self.active_services:
                     continue
+
+                row["trip_headsign"] = row["trip_headsign"].rstrip(" 0123456789")
 
                 self.active_trips.add(row["trip_id"])
                 self.active_shapes.add(row["shape_id"])
