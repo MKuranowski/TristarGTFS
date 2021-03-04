@@ -54,129 +54,22 @@ def gdansk_route_names():
 def route_color(agency, traction):
     # Colors from mzkzg.org map
     if agency == "1":
-        if traction == "0": return "D4151D", "FFFFFF"
-        elif traction == "4": return "6CF1FA", "000000"
-        else: return "FC7DAB", "000000"
+        if traction in {"0", "900"}:
+            return "D4151D", "FFFFFF"
+        elif traction == {"4", "1200"}:
+            return "6CF1FA", "000000"
+        else:
+            return "FC7DAB", "000000"
 
     else:
-        if traction == "800": return "91BE40", "000000"
-        else: return "009CDA", "FFFFFF"
-
-class Shaper:
-    def __init__(self):
-        self.stops = {}
-        self.generated = {}
-
-        self.enum = 0
-
-        self.create_router()
-
-    def create_router(self):
-        print("\033[1A\033[K" + "Creating shape generator")
-        request = requests.get(r"https://overpass-api.de/api/interpreter/?data=%5Bbbox%3A54.32%2C18.21%2C54.65%2C18.61%5D%5Bout%3Axml%5D%3B%0A(%0A%20way%5B%22highway%22%3D%22motorway%22%5D%3B%0A%20way%5B%22highway%22%3D%22motorway_link%22%5D%3B%0A%20way%5B%22highway%22%3D%22trunk%22%5D%3B%0A%20way%5B%22highway%22%3D%22trunk_link%22%5D%3B%0A%20way%5B%22highway%22%3D%22primary%22%5D%3B%0A%20way%5B%22highway%22%3D%22primary_link%22%5D%3B%0A%20way%5B%22highway%22%3D%22secondary%22%5D%3B%0A%20way%5B%22highway%22%3D%22secondary_link%22%5D%3B%0A%20way%5B%22highway%22%3D%22tertiary%22%5D%3B%0A%20way%5B%22highway%22%3D%22tertiary_link%22%5D%3B%0A%20way%5B%22highway%22%3D%22unclassified%22%5D%3B%0A%20way%5B%22highway%22%3D%22minor%22%5D%3B%0A%20way%5B%22highway%22%3D%22residential%22%5D%3B%0A%20way%5B%22highway%22%3D%22living_street%22%5D%3B%0A%20way%5B%22highway%22%3D%22service%22%5D%3B%0A)%3B%0A%3E-%3E.n%3B%0A%3C-%3E.r%3B%0A(._%3B.n%3B.r%3B)%3B%0Aout%3B%0A")
-
-        temp_xml = NamedTemporaryFile(delete=False)
-        temp_xml.write(request.content)
-        temp_xml.seek(0)
-
-        self.router = pyroutelib3.Router("bus", temp_xml.name)
-
-        temp_xml.close()
-
-    def rotue_between_stops(self, start_stop, end_stop):
-        # Find nodes
-        start_lat, start_lon = map(float, self.stops[start_stop])
-        end_lat, end_lon = map(float, self.stops[end_stop])
-        start = self.router.findNode(start_lat, start_lon)
-        end = self.router.findNode(end_lat, end_lon)
-
-        # Do route
-
-        # SafetyCheck - start and end nodes have to be defined
-        if start and end:
-            try:
-                with time_limit(10):
-                    status, route = self.router.doRoute(start, end)
-            except TimeoutError:
-                status, route = "timeout", []
-
-            route_points = list(map(self.router.nodeLatLon, route))
-
-            # SafetyCheck - route has to have at least 2 nodes
-            if status == "success" and len(route_points) <= 1:
-                status = "to_few_nodes_({d})".format(len(route))
-
-            # Apply rdp algorithm
-            route_points = rdp.rdp(route_points, epsilon=0.000006)
-
+        if traction in {"11", "800"}:
+            return "91BE40", "000000"
         else:
-            start, end = math.nan, math.nan
-            status = "no_nodes_found"
+            return "009CDA", "FFFFFF"
 
-        # If we failed, catch some more info on why
-        if status != "success":
-
-            ### DEBUG-SHAPES ###
-            if not os.path.exists("shape-errors/{}-{}.json".format(start_stop, end_stop)):
-                with open("shape-errors/{}-{}.json".format(start_stop, end_stop), "w") as f:
-                    json.dump(
-                        {"start": start_stop, "end": end_stop,
-                         "start_node": start, "end_node": end,
-                         "start_pos": [start_lat, start_lon],
-                         "end_pod": [end_lat, end_lon],
-                         "error": status
-                        }, f, indent=2
-                    )
-
-            route_points = [[start_lat, start_lon], [end_lat, end_lon]]
-
-        return route_points
-
-    def get(self, stops):
-        stops_hashable = "-".join(stops)
-
-        if stops_hashable in self.generated:
-            return self.generated[stops_hashable]
-
-        self.enum += 1
-        pattern_id = "2:" + str(self.enum)
-
-        pt_seq = 0
-
-        routes = []
-        for i in range(1, len(stops)):
-            routes.append(self.rotue_between_stops(stops[i-1], stops[i]))
-
-        for x in range(len(routes)):
-            leg = routes[x]
-
-            # We always ignore first point of route leg [it's the same as next routes first point],
-            # but this would make the script ignore the very first point (corresponding to start stop)
-            if x == 0:
-                pt_seq += 1
-                self.writer.writerow([pattern_id, pt_seq, leg[0][0], leg[0][1]])
-
-            # Output points of leg
-            for y in range(1, len(leg)):
-                pt_seq += 1
-                self.writer.writerow([pattern_id, pt_seq, leg[y][0], leg[y][1]])
-
-        self.generated[stops_hashable] = pattern_id
-        return pattern_id
-
-    def open(self):
-        self.file = open("gtfs/shapes.txt", "w", encoding="utf-8", newline="")
-        self.writer = csv.writer(self.file)
-        self.writer.writerow(["shape_id", "shape_pt_sequence", "shape_pt_lat", "shape_pt_lon"])
-
-    def close(self):
-        self.file.close()
 
 class TristarGtfs:
-    def __init__(self, shapes, publisher_name=None, publisher_url=None):
-        self.shapes = shapes
-        self.shape_gen = Shaper() if shapes else None
-
+    def __init__(self, publisher_name=None, publisher_url=None):
         self.data_download = None
         self.publisher_name = publisher_name
         self.publisher_url = publisher_url
@@ -187,9 +80,10 @@ class TristarGtfs:
         self.gdansk_file = TemporaryFile()
         self.gdynia_file = TemporaryFile()
 
-        #self.stop_merge_table = {}
+        # self.stop_merge_table = {}
 
         self.active_services = set()
+        self.active_shapes = set()
         self.active_trips = set()
 
         self.download()
@@ -210,24 +104,6 @@ class TristarGtfs:
         self.gdynia_file.write(req.content)
         self.gdynia_file.seek(0)
         self.gdynia = zipfile.ZipFile(self.gdynia_file, mode="r")
-
-    def gdynia_times(self):
-        gdynia_trips = {}
-
-        with self.gdynia.open("stop_times.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["trip_id"] = "2:" + row["trip_id"]
-                #row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
-
-                if row["trip_id"] not in gdynia_trips: gdynia_trips[row["trip_id"]] = []
-
-                gdynia_trips[row["trip_id"]].append({
-                    "stop": row["stop_id"],
-                    "order": int(row["stop_sequence"])
-                })
-
-        return gdynia_trips
 
     def static_files(self):
         print("\033[1A\033[K" + "Creating agency.txt, feed_info.txt and attributions.txt")
@@ -259,11 +135,6 @@ class TristarGtfs:
         file.write(f'2,2,"Based on data by: Zarząd Dróg i Zieleni w Gdyni (retrieved {version}, '
                    'agency not responsible for this dataset)",0,0,1,1,'
                     '"http://otwartedane.gdynia.pl/pl/dataset/informacje-o-rozkladach-jazdy-i-lokalizacji-przystankow"\n')
-
-        if self.shapes:
-            file.write('3,2,"ZKM Gdynia bus shapes based on data by: © OpenStreetMap contributors"'
-                       f' (retrieved {version}, under ODbL license)'
-                       ',0,0,1,1,"https://www.openstreetmap.org/copyright/"\n')
 
         file.close()
 
@@ -317,8 +188,6 @@ class TristarGtfs:
                 if row["stop_name"].startswith("Gdynia"):
                     row["stop_name"] = row["stop_name"][7:]
 
-                if self.shapes:
-                    self.shape_gen.stops[row["stop_id"]] = (row["stop_lat"], row["stop_lon"])
                 writer.writerow(row)
 
         print("\033[1A\033[K" + "Merging Gdynia stops")
@@ -330,9 +199,6 @@ class TristarGtfs:
                 #else: source = row["stop_id"]
 
                 #if row["stop_id"] in self.stop_merge_table: continue
-
-                if self.shapes:
-                    self.shape_gen.stops[row["stop_id"]] = (row["stop_lat"], row["stop_lon"])
                 writer.writerow(row)
 
         file.close()
@@ -456,9 +322,10 @@ class TristarGtfs:
             reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
             for row in reader:
                 row["trip_id"] = "1:" + row["trip_id"]
-                #row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
+                # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
 
-                if row["trip_id"] not in self.active_trips: continue
+                if row["trip_id"] not in self.active_trips:
+                    continue
 
                 writer.writerow(row)
 
@@ -468,43 +335,54 @@ class TristarGtfs:
             reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
             for row in reader:
                 row["trip_id"] = "2:" + row["trip_id"]
-                #row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
+                # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
 
-                if row["trip_id"] not in self.active_trips: continue
+                if row["trip_id"] not in self.active_trips:
+                    continue
 
                 writer.writerow(row)
 
         file.close()
 
-    def merge_trips_shapes(self):
-        ## SHAPES: Load Gdynia trips for shape generation and copy Gdańsk shapes
-        if self.shapes:
-            print("\033[1A\033[K" + "Loading Gdynia times for shape generations")
-            gdynia_trips = self.gdynia_times()
-            fields = ["route_id", "service_id", "trip_id", "trip_headsign",
-                "direction_id", "shape_id", "wheelchair_accessible"
-            ]
+    def merge_shapes(self):
+        file = open("gtfs/shapes.txt", mode="w", encoding="utf-8", newline="")
+        writer = csv.DictWriter(
+            file,
+            ["shape_id", "shape_pt_sequence", "shape_pt_lat", "shape_pt_lon"],
+            extrasaction="ignore")
+        writer.writeheader()
 
-            print("\033[1A\033[K" + "Merging Gdańsk shapes")
-            self.shape_gen.open()
-            with self.gdansk.open("shapes.txt") as buffer:
-                reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-                for row in reader:
-                    self.shape_gen.writer.writerow([
-                        "1:" + row["shape_id"],
-                        row["shape_pt_sequence"],
-                        row["shape_pt_lat"],
-                        row["shape_pt_lon"]
-                    ])
+        print("\033[1A\033[K" + "Merging Gdańsk shapes")
 
-        else:
-            gdynia_trips = {}
-            fields = ["route_id", "service_id", "trip_id",
-                "trip_headsign", "direction_id", "wheelchair_accessible"
-            ]
+        with self.gdansk.open("shapes.txt") as buffer:
+            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
+            for row in reader:
+                row["shape_id"] = "1:" + row["shape_id"]
+                if row["shape_id"] not in self.active_shapes:
+                    continue
 
+                writer.writerow(row)
+
+        print("\033[1A\033[K" + "Merging Gdynia shapes")
+
+        with self.gdynia.open("shapes.txt") as buffer:
+            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
+            for row in reader:
+                row["shape_id"] = "2:" + row["shape_id"]
+                if row["shape_id"] not in self.active_shapes:
+                    continue
+
+                writer.writerow(row)
+
+        file.close()
+
+    def merge_trips(self):
         file = open("gtfs/trips.txt", mode="w", encoding="utf-8", newline="")
-        writer = csv.DictWriter(file, fields, extrasaction="ignore")
+        writer = csv.DictWriter(
+            file,
+            ["route_id", "service_id", "trip_id", "trip_headsign",
+             "direction_id", "shape_id", "wheelchair_accessible"]
+            , extrasaction="ignore")
         writer.writeheader()
 
         print("\033[1A\033[K" + "Merging Gdańsk trips")
@@ -517,9 +395,11 @@ class TristarGtfs:
                 row["trip_id"] = "1:" + row["trip_id"]
                 row["shape_id"] = "1:" + row["shape_id"]
 
-                if row["service_id"] not in self.active_services: continue
+                if row["service_id"] not in self.active_services:
+                    continue
 
                 self.active_trips.add(row["trip_id"])
+                self.active_shapes.add(row["shape_id"])
                 writer.writerow(row)
 
         print("\033[1A\033[K" + "Merging Gdynia trips")
@@ -530,47 +410,42 @@ class TristarGtfs:
                 row["route_id"] = "2:" + row["route_id"]
                 row["service_id"] = "2:" + row["service_id"]
                 row["trip_id"] = "2:" + row["trip_id"]
+                row["shape_id"] = "2:" + row["shape_id"]
 
-                if row["service_id"] not in self.active_services: continue
-
-                if self.shapes:
-                    print("\033[1A\033[K" + "Generating shape for Gdynia trip", row["trip_id"])
-                    row["shape_id"] = self.shape_gen.get(
-                        [i["stop"] for i in sorted(gdynia_trips[row["trip_id"]], key=lambda i: i["order"])]
-                    )
-                    print("\033[1A\033[K" + "Merging Gdynia trips")
+                if row["service_id"] not in self.active_services:
+                    continue
 
                 self.active_trips.add(row["trip_id"])
+                self.active_shapes.add(row["shape_id"])
                 writer.writerow(row)
 
-        if self.shapes: self.shape_gen.close()
         file.close()
 
     @classmethod
-    def create(cls, shapes, target="gtfs.zip", publisher_name=None, publisher_url=None):
+    def create(cls, target="gtfs.zip", publisher_name=None, publisher_url=None):
         print("Starting TristarGTFS")
 
         for file in os.scandir("gtfs"):
             os.remove(file.path)
 
-        self = cls(shapes, publisher_name, publisher_url)
+        self = cls(publisher_name, publisher_url)
 
         self.static_files()
 
         self.merge_routes()
         self.merge_stops()
         self.merge_dates()
-        self.merge_trips_shapes()
+        self.merge_trips()
+        self.merge_shapes()
         self.merge_times()
 
         self.compress(target)
+
 
 if __name__ == "__main__":
     st = time.time()
     argprs = argparse.ArgumentParser()
     argprs.add_argument("-o", "--output-file", default="gtfs.zip", required=False, metavar="(path)", dest="target", help="destination of the gtfs file (defualt: gtfs.zip)")
-    argprs.add_argument("-s", "--shapes", action="store_true", required=False, help="generate shapes for ZKM Gdynia and merge with ZTM Gdańsk shapes")
-
     argprs.add_argument("-pn", "--publisher-name", required=False, metavar="NAME", dest="publisher_name", help="value of feed_publisher_name")
     argprs.add_argument("-pu", "--publisher-url", required=False, metavar="URL", dest="publisher_url", help="value of feed_publisher_url")
 
@@ -585,6 +460,6 @@ if __name__ == "__main__":
     |_|_|  |_|___/\__\__,_|_|   \_____|  |_|  |_|   |_____/
     """)
 
-    TristarGtfs.create(args.shapes, args.target, args.publisher_name, args.publisher_url)
+    TristarGtfs.create(args.target, args.publisher_name, args.publisher_url)
 
     print("=== Done! In %s sec. ===" % round(time.time() - st, 3))
