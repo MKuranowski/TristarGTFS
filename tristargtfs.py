@@ -4,10 +4,11 @@ import io
 import os
 import time
 import zipfile
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from itertools import chain
 from tempfile import TemporaryFile
-from typing import Any, Dict, List, Set, Tuple
+from typing import Dict, Generator, List, NamedTuple, Set, Tuple
 
 import requests
 
@@ -16,6 +17,11 @@ __author__ = "Mikołaj Kuranowski"
 __license__ = "MIT"
 __email__ = "".join(chr(i) for i in [109, 107, 117, 114, 97, 110, 111, 119, 115, 107, 105, 32, 91,
                                      1072, 116, 93, 32, 103, 109, 97, 105, 108, 46, 99, 111, 109])
+
+
+class ServiceDate(NamedTuple):
+    service_id: str
+    date: date
 
 
 def gdansk_route_names() -> Dict[str, str]:
@@ -58,6 +64,14 @@ def route_color(agency: str, traction: str) -> Tuple[str, str]:
             return "91BE40", "000000"  # Trolleybus
         else:
             return "009CDA", "FFFFFF"  # Bus
+
+
+@contextmanager
+def csv_reader_from_zip(zip: zipfile.ZipFile, name: str) \
+        -> Generator[csv.DictReader[str], None, None]:
+    with zip.open(name, mode="r") as raw, \
+            io.TextIOWrapper(raw, encoding="utf-8-sig", newline="") as wrapped:
+        yield csv.DictReader(wrapped)
 
 
 class TristarGtfs:
@@ -204,6 +218,21 @@ class TristarGtfs:
 
         file.close()
 
+    def do_merge_routes(self, reader: csv.DictReader[str], writer: csv.DictWriter[str],
+                        agency_id: str, prefix: str, route_names: Dict[str, str] = {}) -> None:
+        for row in reader:
+            row["agency_id"] = agency_id
+            row["route_id"] = prefix + row["route_id"]
+
+            row["route_short_name"] = row["route_short_name"].strip()
+
+            row["route_long_name"] = route_names.get(row["route_short_name"], "") \
+                .replace('""', '"')
+            row["route_color"], row["route_text_color"] = route_color(row["agency_id"],
+                                                                      row["route_type"])
+
+            writer.writerow(row)
+
     def merge_routes(self):
         file = open("gtfs/routes.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(file, [
@@ -219,83 +248,58 @@ class TristarGtfs:
         route_names.update(gdansk_route_names())
 
         print("\033[1A\033[K" + "Merging Gdańsk routes")
-
-        with self.gdansk.open("routes.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["agency_id"] = "1"
-                row["route_id"] = "1:" + row["route_id"]
-
-                row["route_short_name"] = row["route_short_name"].strip()
-
-                row["route_long_name"] = route_names.get(row["route_short_name"], "")
-                row["route_color"], row["route_text_color"] = route_color(row["agency_id"],
-                                                                          row["route_type"])
-
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdansk, "routes.txt") as reader:
+            self.do_merge_routes(reader, writer, "1", "1:", route_names)
 
         print("\033[1A\033[K" + "Merging Gdynia routes")
+        with csv_reader_from_zip(self.gdynia, "routes.txt") as reader:
+            self.do_merge_routes(reader, writer, "2", "2:", route_names)
 
-        with self.gdynia.open("routes.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["agency_id"] = "2"
-                row["route_id"] = "2:" + row["route_id"]
+    def load_dates(self, reader: csv.DictReader[str], prefix: str) -> List[ServiceDate]:
+        return [
+            ServiceDate(
+                prefix + row["service_id"],
+                datetime.strptime(row["date"], "%Y%m%d").date(),
+            )
+            for row in reader
+            if row["excpetion_type"] == "1"
+        ]
 
-                row["route_short_name"] = row["route_short_name"].strip()
-                row["route_long_name"] = row["route_long_name"].replace('""', '"')
-
-                row["route_color"], row["route_text_color"] = route_color(row["agency_id"],
-                                                                          row["route_type"])
-
-                writer.writerow(row)
-
-    def merge_dates(self):
+    def merge_dates(self) -> None:
         file = open("gtfs/calendar_dates.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(file, ["date", "service_id", "exception_type"],
                                 extrasaction="ignore")
         writer.writeheader()
 
-        gdansk_dates: List[Dict[str, Any]] = []
-        gdynia_dates: List[Dict[str, Any]] = []
-
         print("\033[1A\033[K" + "Loading Gdańsk services")
-
-        with self.gdansk.open("calendar_dates.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in filter(lambda i: i["exception_type"] == "1", reader):
-                row["service_id"] = "1:" + row["service_id"]
-                row["date"] = datetime.strptime(row["date"], "%Y%m%d").date()  # type: ignore
-                gdansk_dates.append(row)
+        with csv_reader_from_zip(self.gdansk, "calendar_dates.txt") as reader:
+            gdansk_dates = self.load_dates(reader, "1:")
 
         print("\033[1A\033[K" + "Loading Gdynia services")
-
-        with self.gdynia.open("calendar_dates.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in filter(lambda i: i["exception_type"] == "1", reader):
-                row["service_id"] = "2:" + row["service_id"]
-                row["date"] = datetime.strptime(row["date"], "%Y%m%d").date()  # type: ignore
-                gdynia_dates.append(row)
+        with csv_reader_from_zip(self.gdynia, "calendar_dates.txt") as reader:
+            gdynia_dates = self.load_dates(reader, "2:")
 
         print("\033[1A\033[K" + "Exporting all services")
 
         # Find common start & end date for calendars
         start_date: date = max(
-            min(i["date"] for i in gdansk_dates),
-            min(i["date"] for i in gdynia_dates))
+            min(i.date for i in gdansk_dates),
+            min(i.date for i in gdynia_dates),
+        )
 
         end_date: date = min(
-            max(i["date"] for i in gdansk_dates),
-            max(i["date"] for i in gdynia_dates))
+            max(i.date for i in gdansk_dates),
+            max(i.date for i in gdynia_dates),
+        )
 
         # Figure out which service is active on every day between start_date and end_date
         services_on_date: Dict[date, Set[str]] = {}
         for service_date in chain(gdansk_dates, gdynia_dates):
-            if service_date["date"] > end_date or service_date["date"] < start_date:
+            if service_date.date > end_date or service_date.date < start_date:
                 continue
 
-            services_on_date.setdefault(service_date["date"], set()) \
-                            .add(service_date["service_id"])
+            services_on_date.setdefault(service_date.date, set()) \
+                            .add(service_date.service_id)
 
         # Save merged services
         while start_date <= end_date:
@@ -303,14 +307,26 @@ class TristarGtfs:
 
             for service in sorted(services_on_date[start_date]):
                 writer.writerow(
-                    {"date": date_str, "service_id": service, "exception_type": "1"})
+                    {"date": date_str, "service_id": service, "exception_type": "1"}
+                )
                 self.active_services.add(service)
 
             start_date += timedelta(days=1)
 
         file.close()
 
-    def merge_times(self):
+    def do_merge_times(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
+                       prefix: str) -> None:
+        for row in reader:
+            row["trip_id"] = prefix + row["trip_id"]
+            # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
+
+            if row["trip_id"] not in self.active_trips:
+                continue
+
+            writer.writerow(row)
+
+    def merge_times(self) -> None:
         file = open("gtfs/stop_times.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(
             file,
@@ -323,34 +339,25 @@ class TristarGtfs:
         writer.writeheader()
 
         print("\033[1A\033[K" + "Merging Gdańsk stop_times")
-
-        with self.gdansk.open("stop_times.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["trip_id"] = "1:" + row["trip_id"]
-                # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
-
-                if row["trip_id"] not in self.active_trips:
-                    continue
-
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdansk, "stop_times.txt") as reader:
+            self.do_merge_times(writer, reader, "1:")
 
         print("\033[1A\033[K" + "Merging Gdynia stop_times")
-
-        with self.gdynia.open("stop_times.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["trip_id"] = "2:" + row["trip_id"]
-                # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
-
-                if row["trip_id"] not in self.active_trips:
-                    continue
-
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdynia, "stop_times.txt") as reader:
+            self.do_merge_times(writer, reader, "2:")
 
         file.close()
 
-    def merge_shapes(self):
+    def do_merge_shapes(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
+                        prefix: str) -> None:
+        for row in reader:
+            row["shape_id"] = prefix + row["shape_id"]
+            if row["shape_id"] not in self.active_shapes:
+                continue
+
+            writer.writerow(row)
+
+    def merge_shapes(self) -> None:
         file = open("gtfs/shapes.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(
             file,
@@ -359,30 +366,33 @@ class TristarGtfs:
         writer.writeheader()
 
         print("\033[1A\033[K" + "Merging Gdańsk shapes")
-
-        with self.gdansk.open("shapes.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["shape_id"] = "1:" + row["shape_id"]
-                if row["shape_id"] not in self.active_shapes:
-                    continue
-
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdansk, "shapes.txt") as reader:
+            self.do_merge_shapes(writer, reader, "1:")
 
         print("\033[1A\033[K" + "Merging Gdynia shapes")
-
-        with self.gdynia.open("shapes.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["shape_id"] = "2:" + row["shape_id"]
-                if row["shape_id"] not in self.active_shapes:
-                    continue
-
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdansk, "shapes.txt") as reader:
+            self.do_merge_shapes(writer, reader, "2:")
 
         file.close()
 
-    def merge_trips(self):
+    def do_merge_trips(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
+                       prefix: str) -> None:
+        for row in reader:
+            row["route_id"] = prefix + row["route_id"]
+            row["service_id"] = prefix + row["service_id"]
+            row["trip_id"] = prefix + row["trip_id"]
+            row["shape_id"] = prefix + row["shape_id"]
+
+            if row["service_id"] not in self.active_services:
+                continue
+
+            row["trip_headsign"] = row["trip_headsign"].rstrip(" 0123456789")
+
+            self.active_trips.add(row["trip_id"])
+            self.active_shapes.add(row["shape_id"])
+            writer.writerow(row)
+
+    def merge_trips(self) -> None:
         file = open("gtfs/trips.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(
             file,
@@ -392,42 +402,12 @@ class TristarGtfs:
         writer.writeheader()
 
         print("\033[1A\033[K" + "Merging Gdańsk trips")
-
-        with self.gdansk.open("trips.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["route_id"] = "1:" + row["route_id"]
-                row["service_id"] = "1:" + row["service_id"]
-                row["trip_id"] = "1:" + row["trip_id"]
-                row["shape_id"] = "1:" + row["shape_id"]
-
-                if row["service_id"] not in self.active_services:
-                    continue
-
-                row["trip_headsign"] = row["trip_headsign"].rstrip(" 0123456789")
-
-                self.active_trips.add(row["trip_id"])
-                self.active_shapes.add(row["shape_id"])
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdansk, "trips.txt") as reader:
+            self.do_merge_trips(writer, reader, "1:")
 
         print("\033[1A\033[K" + "Merging Gdynia trips")
-
-        with self.gdynia.open("trips.txt") as buffer:
-            reader = csv.DictReader(io.TextIOWrapper(buffer, encoding="utf-8", newline=""))
-            for row in reader:
-                row["route_id"] = "2:" + row["route_id"]
-                row["service_id"] = "2:" + row["service_id"]
-                row["trip_id"] = "2:" + row["trip_id"]
-                row["shape_id"] = "2:" + row["shape_id"]
-
-                if row["service_id"] not in self.active_services:
-                    continue
-
-                row["trip_headsign"] = row["trip_headsign"].rstrip(" 0123456789")
-
-                self.active_trips.add(row["trip_id"])
-                self.active_shapes.add(row["shape_id"])
-                writer.writerow(row)
+        with csv_reader_from_zip(self.gdynia, "trips.txt") as reader:
+            self.do_merge_trips(writer, reader, "2:")
 
         file.close()
 
