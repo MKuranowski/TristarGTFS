@@ -67,8 +67,7 @@ def route_color(agency: str, traction: str) -> Tuple[str, str]:
 
 
 @contextmanager
-def csv_reader_from_zip(zip: zipfile.ZipFile, name: str) \
-        -> Generator[csv.DictReader[str], None, None]:
+def csv_reader_from_zip(zip: zipfile.ZipFile, name: str) -> Generator[csv.DictReader, None, None]:
     with zip.open(name, mode="r") as raw, \
             io.TextIOWrapper(raw, encoding="utf-8-sig", newline="") as wrapped:
         yield csv.DictReader(wrapped)
@@ -94,7 +93,7 @@ class TristarGtfs:
 
         self.download()
 
-    def download(self):
+    def download(self) -> None:
         print("\033[1A\033[K" + "Downloading Gdansk GTFS")
         self.data_download = datetime.today()
 
@@ -111,7 +110,7 @@ class TristarGtfs:
         self.gdynia_file.seek(0)
         self.gdynia = zipfile.ZipFile(self.gdynia_file, mode="r")
 
-    def static_files(self):
+    def static_files(self) -> None:
         print("\033[1A\033[K" + "Creating agency.txt, feed_info.txt and attributions.txt")
         version = self.data_download.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -154,13 +153,13 @@ class TristarGtfs:
         f.close()
 
     @staticmethod
-    def compress(target="gtfs.zip"):
+    def compress(target="gtfs.zip") -> None:
         print("\033[1A\033[K" + "Compressing to " + target)
         with zipfile.ZipFile(target, mode="w", compression=zipfile.ZIP_DEFLATED) as arch:
             for f in filter(lambda i: i.name.endswith(".txt"), os.scandir("gtfs")):
                 arch.write(f.path, f.name)
 
-    def merge_stops(self):
+    def merge_stops(self) -> None:
         file = open("gtfs/stops.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(file, ["stop_id", "stop_name", "stop_lat", "stop_lon"],
                                 extrasaction="ignore")
@@ -218,8 +217,8 @@ class TristarGtfs:
 
         file.close()
 
-    def do_merge_routes(self, reader: csv.DictReader[str], writer: csv.DictWriter[str],
-                        agency_id: str, prefix: str, route_names: Dict[str, str] = {}) -> None:
+    def do_merge_routes(self, reader: csv.DictReader, writer: csv.DictWriter, agency_id: str,
+                        prefix: str, route_names: Dict[str, str] = {}) -> None:
         for row in reader:
             row["agency_id"] = agency_id
             row["route_id"] = prefix + row["route_id"]
@@ -233,7 +232,7 @@ class TristarGtfs:
 
             writer.writerow(row)
 
-    def merge_routes(self):
+    def merge_routes(self) -> None:
         file = open("gtfs/routes.txt", mode="w", encoding="utf-8", newline="")
         writer = csv.DictWriter(file, [
                 "agency_id", "route_id", "route_short_name", "route_long_name",
@@ -255,14 +254,14 @@ class TristarGtfs:
         with csv_reader_from_zip(self.gdynia, "routes.txt") as reader:
             self.do_merge_routes(reader, writer, "2", "2:", route_names)
 
-    def load_dates(self, reader: csv.DictReader[str], prefix: str) -> List[ServiceDate]:
+    def load_dates(self, reader: csv.DictReader, prefix: str) -> List[ServiceDate]:
         return [
             ServiceDate(
                 prefix + row["service_id"],
                 datetime.strptime(row["date"], "%Y%m%d").date(),
             )
             for row in reader
-            if row["excpetion_type"] == "1"
+            if row["exception_type"] == "1"
         ]
 
     def merge_dates(self) -> None:
@@ -315,8 +314,7 @@ class TristarGtfs:
 
         file.close()
 
-    def do_merge_times(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
-                       prefix: str) -> None:
+    def do_merge_times(self, writer: csv.DictWriter, reader: csv.DictReader, prefix: str) -> None:
         for row in reader:
             row["trip_id"] = prefix + row["trip_id"]
             # row["stop_id"] = self.stop_merge_table.get(row["stop_id"], row["stop_id"])
@@ -348,8 +346,7 @@ class TristarGtfs:
 
         file.close()
 
-    def do_merge_shapes(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
-                        prefix: str) -> None:
+    def do_merge_shapes(self, writer: csv.DictWriter, reader: csv.DictReader, prefix: str) -> None:
         for row in reader:
             row["shape_id"] = prefix + row["shape_id"]
             if row["shape_id"] not in self.active_shapes:
@@ -375,8 +372,7 @@ class TristarGtfs:
 
         file.close()
 
-    def do_merge_trips(self, writer: csv.DictWriter[str], reader: csv.DictReader[str],
-                       prefix: str) -> None:
+    def do_merge_trips(self, writer: csv.DictWriter, reader: csv.DictReader, prefix: str) -> None:
         for row in reader:
             row["route_id"] = prefix + row["route_id"]
             row["service_id"] = prefix + row["service_id"]
