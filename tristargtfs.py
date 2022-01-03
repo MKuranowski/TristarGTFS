@@ -437,7 +437,7 @@ if __name__ == "__main__":
     argprs = argparse.ArgumentParser()
     argprs.add_argument("-o", "--output-file", default="gtfs.zip", required=False,
                         metavar="(path)", dest="target",
-                        help="destination of the gtfs file (defualt: gtfs.zip)")
+                        help="destination of the gtfs file (default: gtfs.zip)")
     argprs.add_argument("-pn", "--publisher-name", required=False, metavar="NAME",
                         dest="publisher_name", help="value of feed_publisher_name")
     argprs.add_argument("-pu", "--publisher-url", required=False, metavar="URL",
