@@ -367,7 +367,7 @@ class TristarGtfs:
             self.do_merge_shapes(writer, reader, "1:")
 
         print("\033[1A\033[K" + "Merging Gdynia shapes")
-        with csv_reader_from_zip(self.gdansk, "shapes.txt") as reader:
+        with csv_reader_from_zip(self.gdynia, "shapes.txt") as reader:
             self.do_merge_shapes(writer, reader, "2:")
 
         file.close()
