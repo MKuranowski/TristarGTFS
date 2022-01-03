@@ -312,9 +312,13 @@ class TristarGtfs:
 
     def merge_times(self):
         file = open("gtfs/stop_times.txt", mode="w", encoding="utf-8", newline="")
-        writer = csv.DictWriter(file, [
-                "trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"
-            ], extrasaction="ignore"
+        writer = csv.DictWriter(
+            file,
+            [
+                "trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence",
+                "pickup_type", "drop_off_type",
+            ],
+            extrasaction="ignore",
         )
         writer.writeheader()
 
