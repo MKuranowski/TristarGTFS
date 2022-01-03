@@ -19,6 +19,9 @@ __email__ = "".join(chr(i) for i in [109, 107, 117, 114, 97, 110, 111, 119, 115,
                                      1072, 116, 93, 32, 103, 109, 97, 105, 108, 46, 99, 111, 109])
 
 
+NORMALIZE_ROUTE_TYPES: Dict[str, str] = {"700": "3", "800": "11", "900": "0"}
+
+
 class ServiceDate(NamedTuple):
     service_id: str
     date: date
@@ -222,6 +225,7 @@ class TristarGtfs:
         for row in reader:
             row["agency_id"] = agency_id
             row["route_id"] = prefix + row["route_id"]
+            row["route_type"] = NORMALIZE_ROUTE_TYPES[row["route_type"]]
 
             row["route_short_name"] = row["route_short_name"].strip()
 
