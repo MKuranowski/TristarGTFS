@@ -40,7 +40,7 @@ def gdansk_route_names() -> Dict[str, str]:
             if route["routeShortName"] in route_names:
                 continue
             else:
-                route_names[route["routeShortName"]] = route["routeLongName"]
+                route_names[route["routeShortName"]] = route["routeLongName"].strip()
 
     return route_names
 
