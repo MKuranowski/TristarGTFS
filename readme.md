@@ -1,15 +1,21 @@
+# ⚠️ Deprecation warning
+
+This script should no longer be used. Use GTFS dataset published by the agencies:
+[ZTM Gdańsk](https://ckan.multimediagdansk.pl/dataset/tristar/resource/30e783e4-2bec-4a7d-bb22-ee3e3b26ca96) and
+[ZKM Gdynia](https://www.otwartedane.gdynia.pl/pl/dataset/informacje-o-rozkladach-jazdy-i-lokalizacji-przystankow).
+
 # TristarGTFS
 
 ## Description
-Creates GTFS/GTFS-Realtime data feed for Gdańsk and Gdynia.  
-Data comes from [Open Gdańsk project](https://ckan.multimediagdansk.pl/dataset/tristar) and [Gdynia open data project](http://otwartedane.gdynia.pl/dataset?tags=GTFS).  
+Creates GTFS/GTFS-Realtime data feed for Gdańsk and Gdynia.
+Data comes from [Open Gdańsk project](https://ckan.multimediagdansk.pl/dataset/tristar) and [Gdynia open data project](http://otwartedane.gdynia.pl/dataset?tags=GTFS).
 The script can also generate shapes.txt for Gdynia shcedules, which whill in turn use data from [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
 
 ### Some precautions
 
 - Produced feed will use extended type 800 for trolleybuses.
 - Data is created up to last day, when schedules are avialable for all agencies.
-- Both ZTM Gdańsk and ZKM Gdynia data sources share their data under [CC BY](http://www.opendefinition.org/licenses/cc-by) license, so you have to credit them.  
+- Both ZTM Gdańsk and ZKM Gdynia data sources share their data under [CC BY](http://www.opendefinition.org/licenses/cc-by) license, so you have to credit them.
   This can be done by exposing the data from `feed_info.txt` file, columns `feed_provider_name`, `feed_publisher_url` and `feed_version`.
 
 ### Ids
@@ -32,7 +38,7 @@ Of course you will need [Python3](https://www.python.org) (version 3.6 or later)
 - [rdp](https://pypi.org/project/rdp/),
 - [gtfs-realtime-bindings](https://pypi.org/project/gtfs-realtime-bindings/) >= 0.0.5.
 
-Before launching install required modules with `pip3 install -r requirements.txt`  
+Before launching install required modules with `pip3 install -r requirements.txt`
 Each script can launch without any command line options, but you may want to take a look at them.
 
 ### Static GTFS - tristargtfs.py
